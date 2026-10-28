@@ -1,12 +1,14 @@
-﻿# 晚点名助手
+# 晚点名助手
 
-Windows 桌面辅助程序，通过雷电模拟器中的安卓版智汇福大完成晚点名操作。支持设定时间、启动补签、自动进入页面、重新发送定位和确认签到结果。
+Windows 桌面辅助程序，仅通过雷电模拟器中的安卓版智汇福大完成晚点名操作。支持设定时间、启动补签、自动进入页面、重新发送定位和确认签到结果。
 
 ## 下载安装
 
-**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.0.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
+**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.1.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
 
-下载 `FzuAttendanceAssistant-Setup-1.0.0.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
+升级时先从托盘退出旧版助手，再安装新版，原设置会保留。
+
+下载 `FzuAttendanceAssistant-Setup-1.0.1.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
 
 需要 Windows 10 1903 及以上或 Windows 11，64 位系统与 .NET Framework 4.8。现代 Windows 已包含这一运行环境。
 
@@ -20,7 +22,7 @@ Windows 桌面辅助程序，通过雷电模拟器中的安卓版智汇福大完
 4. 打开助手的“运行环境”，自动查找或选择雷电安装目录中的 `ldconsole.exe`，填写对应实例编号，第一个实例通常为 `0`。
 5. 点“检查连接”验证页面和定位；在“签到设置”选择 `21:00–23:59` 内的时间，启用自动签到并保存。
 
-新安装默认暂停自动签到，完成上述配置后再开启。平时只运行托盘助手，到了时间才启动或连接模拟器。关闭设置窗口不会退出助手，从托盘菜单可以退出。
+新安装默认暂停自动签到，完成上述配置后再开启。v1.0.1 已移除 Windows 版智汇福大的旧模式和相关按钮。平时只运行托盘助手，到了时间才启动或连接模拟器。关闭设置窗口不会退出助手，从托盘菜单可以退出。
 
 ## 工作方式
 
@@ -30,6 +32,8 @@ Windows 桌面辅助程序，通过雷电模拟器中的安卓版智汇福大完
 - 只在当日页面允许签到且仍在签到时段时操作按钮。
 - 读取页面“已签到”或“签到成功”后，才将当天标记为成功；未确认成功则记录状态并稍后重试。
 - 支持显示后台只读画面、手动重新定位和重新打开智汇福大。
+- 动态解析 Android 启动入口，区分系统权限提示、登录页、安卓桌面和空白画面。
+- 入口识别失败时可点“导出诊断”，获取不含账号、坐标、令牌或截图的诊断文件。
 
 电脑需要开机并联网；睡眠期间不会执行。登录过期需要本人重新登录。模拟器中保存的固定位置不会随本人移动而更新，应按实际位置配置，并遵守学校的签到要求。
 

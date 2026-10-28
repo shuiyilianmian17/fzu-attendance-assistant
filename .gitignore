@@ -24,3 +24,6 @@ hidden-preview.png
 *.apk
 *.vdi
 *.ldbk
+
+*诊断*.txt
+*diagnostic*.json
