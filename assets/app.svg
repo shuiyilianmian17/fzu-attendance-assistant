@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<defs><linearGradient id="night" x1="0" y1="48" x2="0" y2="976" gradientUnits="userSpaceOnUse"><stop stop-color="#11264e"/><stop offset="1" stop-color="#2056c0"/></linearGradient><mask id="moon"><circle cx="440" cy="425" r="230" fill="white"/><circle cx="535" cy="310" r="210" fill="black"/></mask></defs>
+<rect x="48" y="48" width="928" height="928" rx="224" fill="url(#night)"/>
+<rect width="1024" height="1024" fill="#f7fbff" mask="url(#moon)"/>
+<path d="M734 227L751 276 800 293 751 310 734 359 717 310 668 293 717 276Z" fill="#afdaff"/>
+<circle cx="648" cy="648" r="180" fill="#123268"/><circle cx="648" cy="648" r="162" fill="#2ddaAD"/>
+<path d="M564 646L627 708 735 588" fill="none" stroke="white" stroke-width="55" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
