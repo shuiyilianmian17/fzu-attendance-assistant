@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -41,8 +42,8 @@ static class AndroidNavigation {
  public static AndroidNode Find(AndroidPage page,string label){return page.Nodes.FirstOrDefault(n=>!n.Web&&n.Package==AndroidClient.Package&&n.Enabled&&n.Right>n.Left&&n.Bottom>n.Top&&n.X>=0&&n.X<page.Width&&n.Y>=0&&n.Y<page.Height&&Matches(n,label));}
  public static string Launcher(string output){foreach(string line in (output??"").Split('\n')){string candidate=line.Trim();if(Regex.IsMatch(candidate,"^"+Regex.Escape(AndroidClient.Package)+@"/[A-Za-z0-9_.$]+$"))return candidate;}return null;}
  public static bool LaunchFailed(string output){return Regex.IsMatch(output??"",@"Error\s*:|Error type\s*\d|Permission Denial|SecurityException|Background activity start denied|Activity not started,.*unable",RegexOptions.IgnoreCase);}
- public static string Hint(AndroidPage page){if(HasEmulatorAd(page))return "雷电广告遮挡了应用，正在检查广告关闭按钮。";var packages=page.Nodes.Select(n=>n.Package??"").Distinct().ToArray();if(packages.Any(p=>p.Contains("permissioncontroller")||p=="com.android.packageinstaller"))return "智汇福大停在 Android 权限提示，请在模拟器中完成首次权限确认。";if(packages.Any(p=>p=="com.android.launcher3"||p=="com.ldmnq.launcher3"))return "当前仍是安卓桌面，智汇福大没有进入前台。";if(!packages.Contains(AndroidClient.Package))return "当前前台不是智汇福大，请通过显示隐藏页核对模拟器画面。";if(page.Nodes.Any(n=>n.Package==AndroidClient.Package&&Regex.IsMatch(n.Label??"","验证码|手机号|密码登录|登录失效|一键登录|其他账户登录|上次使用过的账号")))return "当前停在登录页面，请在模拟器中完成登录。";if(page.Nodes.Count(n=>!String.IsNullOrWhiteSpace(n.Label))<2)return "应用画面为空或未提供可读取的页面控件。";return "已打开智汇福大，但尚未识别到晚点名入口。";}
- public static string Summary(AndroidPage page){var b=new StringBuilder();b.AppendLine("画面大小="+page.Width+"x"+page.Height);b.AppendLine("控件数量="+page.Nodes.Count);b.AppendLine("应用控件数量="+page.Nodes.Count(n=>n.Package==AndroidClient.Package));b.AppendLine("网页控件数量="+page.Nodes.Count(n=>n.Web));b.AppendLine("前台应用="+String.Join(",",page.Nodes.Select(n=>n.Package??"").Distinct().Where(p=>Regex.IsMatch(p,@"^[A-Za-z0-9_.]+$"))));foreach(string label in new[]{"晚点名签到","业务","服务","办事","我的服务","消息","一键登录","其他账户登录"}){var node=Find(page,label);b.AppendLine("可见入口["+label+"]="+(node==null?"否":"是，范围 "+node.Left+","+node.Top+","+node.Right+","+node.Bottom));}b.AppendLine("页面状态="+Hint(page));b.AppendLine("已进入晚点名="+page.Attendance);b.AppendLine("雷电广告遮挡="+HasEmulatorAd(page));b.AppendLine("广告关闭按钮可识别="+(AdClose(page)!=null));return b.ToString();}
+ public static string Hint(AndroidPage page){if(HasEmulatorAd(page))return "雷电广告遮挡了应用，正在检查广告关闭按钮。";var packages=page.Nodes.Select(n=>n.Package??"").Distinct().ToArray();if(packages.Any(p=>p.Contains("permissioncontroller")||p=="com.android.packageinstaller"))return "智汇福大停在 Android 权限提示，请在模拟器中完成首次权限确认。";if(packages.Any(p=>p=="com.android.launcher3"||p=="com.ldmnq.launcher3"))return "当前仍是安卓桌面，智汇福大没有进入前台。";if(!packages.Contains(AndroidClient.Package))return "当前前台不是智汇福大，请通过显示隐藏页核对模拟器画面。";if(page.Nodes.Any(n=>n.Package==AndroidClient.Package&&Regex.IsMatch(n.Label??"","验证码|手机号|密码登录|登录失效|一键登录|其他账户登录|上次使用过的账号")))return "当前停在登录页面，请在模拟器中完成登录。";if(page.Nodes.Count(n=>!String.IsNullOrWhiteSpace(n.Label))<2)return "应用画面为空或未提供可读取的页面控件。";if(page.Attendance)return "当前为晚点名签到页。";if(Find(page,"晚点名签到")!=null)return "已找到晚点名入口。";return "已打开智汇福大，但尚未识别到晚点名入口。";}
+ public static string Summary(AndroidPage page){var b=new StringBuilder();b.AppendLine("画面大小="+page.Width+"x"+page.Height);b.AppendLine("控件数量="+page.Nodes.Count);b.AppendLine("应用控件数量="+page.Nodes.Count(n=>n.Package==AndroidClient.Package));b.AppendLine("网页控件数量="+page.Nodes.Count(n=>n.Web));b.AppendLine("前台应用="+String.Join(",",page.Nodes.Select(n=>n.Package??"").Distinct().Where(p=>Regex.IsMatch(p,@"^[A-Za-z0-9_.]+$"))));foreach(string label in new[]{"晚点名签到","业务","服务","办事","我的服务","消息","一键登录","其他账户登录"}){var node=Find(page,label);b.AppendLine("可见入口["+label+"]="+(node==null?"否":"是，范围 "+node.Left+","+node.Top+","+node.Right+","+node.Bottom));}b.AppendLine("页面状态="+Hint(page));b.AppendLine("已进入晚点名="+page.Attendance);b.AppendLine("模拟器广告遮挡="+HasEmulatorAd(page));b.AppendLine("广告关闭按钮可识别="+(AdClose(page)!=null));return b.ToString();}
 }
 static class AndroidClient {
  public const string Package="cn.edu.fzu.fdxypa";
@@ -169,7 +170,7 @@ static class AndroidClient {
  public static async Task<string> Diagnostic(Config c){
   var report=new StringBuilder();report.AppendLine("晚点名助手诊断 v"+typeof(AndroidClient).Assembly.GetName().Version);
   report.AppendLine("生成时间="+Store.Now().ToString("yyyy-MM-dd HH:mm:ss"));report.AppendLine("Windows="+Environment.OSVersion.Version);
-  report.AppendLine("模拟器编号="+c.EmulatorIndex);report.AppendLine("雷电路径可用="+ValidConsole(c.EmulatorPath));
+  report.AppendLine("模拟器编号="+c.EmulatorIndex);report.AppendLine("模拟器类型="+(MuMuClient.Is(c)?"MuMu":Path.GetFileName(c.EmulatorPath)=="ldconsole.exe"?"雷电":"未识别"));report.AppendLine("控制程序="+Path.GetFileName(c.EmulatorPath));report.AppendLine("控制程序可用="+ValidConsole(c.EmulatorPath));if(MuMuClient.Is(c)){try{var info=await MuMuClient.Info(c);foreach(string key in new[]{"is_process_started","is_android_started","adb_port"}){object value;if(info.TryGetValue(key,out value))report.AppendLine("MuMu "+key+"="+value);}}catch(Exception ex){report.AppendLine("MuMu实例查询失败="+ex.GetType().Name);}}
   report.AppendLine("手动操作模式="+c.ManualEmulator);report.AppendLine("关闭后定时等待="+Rules.Deferred(c,Store.Now()));report.AppendLine("自动签到启用="+c.Enabled);report.AppendLine("设定时间="+c.Time);
   report.AppendLine("已解析启动入口="+lastLauncher);report.AppendLine("最近导航摘要：");report.AppendLine(lastNavigation);
   if(ValidConsole(c.EmulatorPath)){
@@ -180,6 +181,7 @@ static class AndroidClient {
   }
   report.AppendLine("此报告不包含账号、坐标、令牌、原始页面文字或截图；导出不提交签到。");return report.ToString();
  }
+ public static async Task PreviewSwipe(Config c,Point a,Point b,Size size){if(!PreviewGeometry.Valid(size,a,b))throw new InvalidOperationException("请在画面内上下拖动。");var page=await Read(c);if(page.Width!=size.Width||page.Height!=size.Height)throw new InvalidOperationException("画面方向已改变，请等待刷新后重试。");if(!page.Nodes.Any(n=>n.Package==Package)||AndroidNavigation.HasEmulatorAd(page))throw new InvalidOperationException("当前不是智汇福大页面，请先打开模拟器窗口处理。");await Shell(c,"input swipe "+a.X+" "+a.Y+" "+b.X+" "+b.Y+" 400");}
  public static async Task<byte[]> Capture(Config c){await DeviceGate.WaitAsync();try{byte[] data=await Adb(c,"exec-out screencap -p",15);if(data.Length<8||data[0]!=137||data[1]!=80||data[2]!=78||data[3]!=71)throw new InvalidOperationException("模拟器画面暂不可用。");return data;}finally{DeviceGate.Release();}}
  public static async Task CloseApp(Config c){await Shell(c,"am force-stop "+Package);}
  public static async Task<bool> Check(Config c,bool dry,bool force,Func<bool> restartRequested,Action clearRestart,Action<string> state){

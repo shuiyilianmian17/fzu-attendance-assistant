@@ -91,6 +91,7 @@ class Engine {
   catch(Exception e){State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
   finally{busy=false;if(!dry)retry=Store.Now().AddMinutes(5);}
  }
+ public async Task PreviewSwipe(Point a,Point b,Size size){if(busy||Config.ClosePending)throw new InvalidOperationException("正在处理签到或关闭模拟器，请稍后滑动。");busy=true;try{await AndroidClient.PreviewSwipe(Config,a,b,size);}finally{busy=false;}}
  public void ResetRetry(){retry=DateTime.MinValue;}
  public async Task RefreshLocation(){if(busy){State("正在处理签到，稍后会自动重新发送定位。");return;}await Check(true,false,true);}
 }
@@ -114,7 +115,7 @@ class MainForm:Form {
  async void StartService(){if(!initial)return;initial=false;timer.Start();lastTick=Store.Now();await engine.ObserveManualWindow();if(config.ClosePending&&!config.ManualEmulator){await engine.FinishCompletedSignIn();return;}if(config.ManualEmulator){engine.State("手动操作模式已恢复，关闭模拟器后恢复定时签到。");return;}if(Rules.Due(config,Store.Now(),true))await engine.Check(false,true,false);else engine.State(config.Enabled?"助手已在后台等待，每天 "+config.Time+" 启动或连接模拟器并签到。":"自动签到已暂停。");}
  async void SaveSchedule(){string chosen=ui.Time;if(!Rules.ValidTime(chosen)){ui.Feedback("请选择 21:00–23:59 内的时间。",true);return;}try{Startup.Set(ui.StartupEnabled);config.Time=chosen;config.Enabled=ui.Enabled;config.EmulatorResumeAt="";Store.Save(config);ui.Refresh(config);ui.Feedback("已保存：每天 "+chosen+"，"+(config.Enabled?"自动签到已开启。":"自动签到已暂停。"),false);if(Rules.Due(config,Store.Now(),false)){engine.ResetRetry();await engine.Check(false,false,false);}}catch{ui.Feedback("保存未完成，请检查当前账户的写入权限。",true);}}
  void SaveEnvironment(){if(config.ClosePending){ui.Feedback("正在等待关闭已签到的模拟器，请先关闭模拟器，或打开手动窗口取消自动关闭后再修改。",true);return;}if(config.ManualEmulator){ui.Feedback("请先关闭模拟器，再修改运行环境。",true);return;}if(engine.IsBusy){ui.Feedback("正在检查签到状态，请等待完成后再保存运行环境。",true);return;}try{int index;if(!AndroidClient.ValidConsole(ui.EmulatorPath)||!Int32.TryParse(ui.EmulatorIndex,out index)||index<0||index>99){ui.Feedback("请选择雷电或 MuMu 控制程序，实例编号为 0–99。",true);return;}var candidate=new Config{EmulatorPath=Path.GetFullPath(ui.EmulatorPath),EmulatorIndex=index,FixedPosition=ui.FixedPosition};AndroidClient.SavedPosition(candidate);config.EmulatorPath=candidate.EmulatorPath;config.EmulatorIndex=index;config.FixedPosition=candidate.FixedPosition;Store.Save(config);ui.Refresh(config);ui.Feedback("运行环境已保存，可到概览检查连接。",false);}catch(InvalidOperationException e){ui.Feedback(e.Message,true);}catch{ui.Feedback("保存未完成，请检查程序路径和实例编号。",true);}}
- void ShowHiddenPage(){if(preview==null||preview.IsDisposed)preview=new HiddenPagePreview();if(!preview.Visible)preview.Show(this);preview.WindowState=FormWindowState.Normal;preview.Activate();}
+ void ShowHiddenPage(){if(preview==null||preview.IsDisposed)preview=new HiddenPagePreview(engine.PreviewSwipe);if(!preview.Visible)preview.Show(this);preview.WindowState=FormWindowState.Normal;preview.Activate();}
  async void ExportDiagnostics(){using(var dialog=new System.Windows.Forms.SaveFileDialog{Title="导出诊断",Filter="诊断文本 (*.txt)|*.txt",FileName="晚点名助手诊断.txt"}){if(dialog.ShowDialog(this)!=DialogResult.OK)return;try{File.WriteAllText(dialog.FileName,await AndroidClient.Diagnostic(config),Encoding.UTF8);ui.Feedback("诊断已导出，不含账号、坐标或截图；本次未提交签到。",false);}catch{ui.Feedback("诊断导出未完成，请确认保存位置可写。",true);}}}
  async void CheckUpdate(){
   if(updating)return;if(engine.IsBusy){ui.Feedback("正在签到或操作模拟器，请稍后检查更新。",true);return;}
@@ -139,6 +140,7 @@ static class Program {
  internal static readonly EventWaitHandle ShowRequest=new EventWaitHandle(false,EventResetMode.AutoReset,@"Local\FzuAttendanceAssistant.ShowSettings.v1");
  [STAThread]static int Main(string[] args){try{
   if(args.Contains("--install-update"))return UpdateClient.Worker(args);
+  if(args.Contains("--preview-test")){PreviewGeometry.Tests();return 0;}
   if(args.Contains("--completion-test")){CompletionTests.Run().GetAwaiter().GetResult();return 0;}
   if(args.Contains("--update-test")){UpdateClient.Tests();return 0;}
   if(args.Contains("--update-probe")){var release=UpdateClient.Latest();string file=UpdateClient.Download(release);File.WriteAllText(Store.FilePath("更新下载检查.txt"),"已从 GitHub 获取 v"+release.Version+" 并验证安装包 SHA256。未启动安装。\n"+file);return 0;}
