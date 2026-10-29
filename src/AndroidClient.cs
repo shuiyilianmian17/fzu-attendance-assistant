@@ -56,7 +56,7 @@ static class AndroidClient {
  static string Device(Config c){return "emulator-"+(5554+c.EmulatorIndex*2).ToString(CultureInfo.InvariantCulture);}
  static string Index(Config c){if(c.EmulatorIndex<0||c.EmulatorIndex>99)throw new InvalidOperationException("模拟器编号应为 0–99。");return c.EmulatorIndex.ToString(CultureInfo.InvariantCulture);}
  public static string SavedPosition(Config c){if(!String.IsNullOrWhiteSpace(c.FixedPosition))return MuMuClient.ValidatePosition(c.FixedPosition);if(MuMuClient.Is(c))return MuMuClient.Position(c);Index(c);string path=Path.Combine(Path.GetDirectoryName(c.EmulatorPath),"vms","config","leidian"+Index(c)+".config");var cfg=Store.Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(path));object location;if(!cfg.TryGetValue("statusSettings.location",out location)||!(location is Dictionary<string,object>))throw new InvalidOperationException("请先在雷电右侧“定位”中选择当前位置并确认。");var p=(Dictionary<string,object>)location;double lng=Convert.ToDouble(p["lng"],CultureInfo.InvariantCulture),lat=Convert.ToDouble(p["lat"],CultureInfo.InvariantCulture);if(Double.IsNaN(lng)||Double.IsNaN(lat)||Double.IsInfinity(lng)||Double.IsInfinity(lat)||lng<-180||lng>180||lat<-90||lat>90)throw new InvalidOperationException("雷电保存的位置无效，请重新确认定位。");return lng.ToString("R",CultureInfo.InvariantCulture)+","+lat.ToString("R",CultureInfo.InvariantCulture);}
- internal static async Task<byte[]> Command(string path,string arguments,int seconds){var start=new ProcessStartInfo(path,arguments){UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=Path.GetDirectoryName(path)};using(var p=Process.Start(start))using(var output=new MemoryStream()){var copy=p.StandardOutput.BaseStream.CopyToAsync(output);var errors=p.StandardError.ReadToEndAsync();var exited=Task.Run(()=>p.WaitForExit(seconds*1000));if(!await exited){try{p.Kill();}catch{}throw new TimeoutException("模拟器控制超时。");}await copy;await errors;if(p.ExitCode!=0)throw new InvalidOperationException("模拟器未响应，请确认该实例已启动且 ADB 调试允许本机连接。");return output.ToArray();}}
+ internal static async Task<byte[]> Command(string path,string arguments,int seconds){Operation.Throw();var start=new ProcessStartInfo(path,arguments){UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=Path.GetDirectoryName(path)};using(var p=Process.Start(start))using(var cancel=Operation.KillOnCancel(p))using(var output=new MemoryStream()){var copy=p.StandardOutput.BaseStream.CopyToAsync(output);var errors=p.StandardError.ReadToEndAsync();var exited=Task.Run(()=>p.WaitForExit(seconds*1000));if(!await exited){try{p.Kill();}catch(OperationCanceledException){throw;}catch{}throw new TimeoutException("模拟器控制超时。");}await copy;await errors;Operation.Throw();if(p.ExitCode!=0)throw new InvalidOperationException("模拟器未响应，请确认该实例已启动且 ADB 调试允许本机连接。");return output.ToArray();}}
  static async Task<string> Console(Config c,string args){if(!ValidConsole(c.EmulatorPath))throw new InvalidOperationException("请在运行环境页选择雷电的 ldconsole.exe。");return Encoding.UTF8.GetString(await Command(c.EmulatorPath,args,15));}
  static async Task<byte[]> Adb(Config c,string args,int seconds){string device=MuMuClient.Is(c)?await MuMuClient.Device(c):Device(c);return await Command(AdbPath(c),"-s "+device+" "+args,seconds);}
  static async Task<string> Shell(Config c,string args){return Encoding.UTF8.GetString(await Adb(c,"shell "+args,15));}
@@ -83,8 +83,8 @@ static class AndroidClient {
   // A console on the normal desktop cannot always find a hidden-desktop player.
   EmulatorHost.QuitHidden(c);await Console(c,"quit --index "+Index(c));
   for(int i=0;i<35;i++){
-   if(!await DeviceOnline(c)&&await InstanceWindow(c)==IntPtr.Zero){await Task.Delay(1000);return;}
-   await Task.Delay(700);
+   if(!await DeviceOnline(c)&&await InstanceWindow(c)==IntPtr.Zero){await Operation.Delay(1000);return;}
+   await Operation.Delay(700);
   }
   throw new InvalidOperationException("模拟器尚未完全关闭，请查看雷电是否显示退出提示，再重试。");
  }
@@ -96,12 +96,12 @@ static class AndroidClient {
    state("正在打开雷电模拟器窗口…");
    // Do not redirect launch output: the player can inherit the pipe and keep it open.
    using(var launch=Process.Start(new ProcessStartInfo(c.EmulatorPath,"launch --index "+Index(c)){UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden,WorkingDirectory=Path.GetDirectoryName(c.EmulatorPath)})){}
-   for(int i=0;i<60&&window==IntPtr.Zero;i++){await Task.Delay(1000);window=await InstanceWindow(c);}
+   for(int i=0;i<60&&window==IntPtr.Zero;i++){await Operation.Delay(1000);window=await InstanceWindow(c);}
   }
   if(window==IntPtr.Zero)throw new InvalidOperationException("未找到所选模拟器窗口，请导出诊断。");
   ShowWindow(window,9);SetForegroundWindow(window);
  }
- static async Task Ensure(Config c,Action<string> state){if(MuMuClient.Is(c)){await MuMuClient.Ensure(c,state);return;}Index(c);if(!ValidConsole(c.EmulatorPath))throw new InvalidOperationException("请在运行环境页选择雷电的 ldconsole.exe。");try{if((await Shell(c,"getprop sys.boot_completed")).Trim()=="1"){await Hide(c);return;}}catch{}string list=await Console(c,"list2");bool running=list.Split('\n').Any(line=>{IntPtr w;return InstanceRunning(line,c,out w);});if(!running){state("正在隐藏桌面启动雷电模拟器…");if(!EmulatorHost.Start(c))throw new InvalidOperationException("雷电未能在隐藏桌面启动。");}for(int i=0;i<60;i++){await Hide(c);try{string ready=(await Shell(c,"getprop sys.boot_completed")).Trim();if(ready=="1")return;}catch{}await Task.Delay(1000);}throw new InvalidOperationException("模拟器启动尚未完成，请稍后重试。");}
+ static async Task Ensure(Config c,Action<string> state){if(MuMuClient.Is(c)){await MuMuClient.Ensure(c,state);return;}Index(c);if(!ValidConsole(c.EmulatorPath))throw new InvalidOperationException("请在运行环境页选择雷电的 ldconsole.exe。");try{if((await Shell(c,"getprop sys.boot_completed")).Trim()=="1"){await Hide(c);return;}}catch(OperationCanceledException){throw;}catch{}string list=await Console(c,"list2");bool running=list.Split('\n').Any(line=>{IntPtr w;return InstanceRunning(line,c,out w);});if(!running){state("正在隐藏桌面启动雷电模拟器…");if(!EmulatorHost.Start(c))throw new InvalidOperationException("雷电未能在隐藏桌面启动。");}for(int i=0;i<60;i++){await Hide(c);try{string ready=(await Shell(c,"getprop sys.boot_completed")).Trim();if(ready=="1")return;}catch(OperationCanceledException){throw;}catch{}await Operation.Delay(1000);}throw new InvalidOperationException("模拟器启动尚未完成，请稍后重试。");}
  static int[] Bounds(string text){var matches=Regex.Matches(text??"",@"-?\d+");if(matches.Count!=4)return new int[4];return matches.Cast<Match>().Select(x=>Int32.Parse(x.Value,CultureInfo.InvariantCulture)).ToArray();}
  public static AndroidPage ParsePage(string xml,int screenWidth=0,int screenHeight=0){var doc=new XmlDocument{XmlResolver=null};doc.LoadXml(xml);var result=new AndroidPage();var root=doc.SelectSingleNode("/hierarchy/node") as XmlElement;if(root==null)throw new InvalidOperationException("没有读到模拟器画面。");var screen=Bounds(root.GetAttribute("bounds"));result.Width=screen[2]-screen[0];result.Height=screen[3]-screen[1];if(screenWidth>0&&screenHeight>0){string rotation=doc.DocumentElement.GetAttribute("rotation");bool rotated=rotation=="1"||rotation=="3";result.Width=rotated?screenHeight:screenWidth;result.Height=rotated?screenWidth:screenHeight;}foreach(XmlElement e in doc.SelectNodes("//node")){var b=Bounds(e.GetAttribute("bounds"));var n=new AndroidNode{Text=e.GetAttribute("text"),Description=e.GetAttribute("content-desc"),Package=e.GetAttribute("package"),ResourceId=e.GetAttribute("resource-id"),Enabled=e.GetAttribute("enabled")=="true",Clickable=e.GetAttribute("clickable")=="true",Left=b[0],Top=b[1],Right=b[2],Bottom=b[3]};if(String.IsNullOrEmpty(n.Package)){for(XmlNode ancestor=e.ParentNode;ancestor is XmlElement;ancestor=ancestor.ParentNode){string inherited=((XmlElement)ancestor).GetAttribute("package");if(!String.IsNullOrEmpty(inherited)){n.Package=inherited;break;}}}XmlElement web=null;for(XmlNode a=e;a is XmlElement;a=a.ParentNode){if(((XmlElement)a).GetAttribute("class")=="android.webkit.WebView"){web=(XmlElement)a;}}n.Web=web!=null&&n.Package==Package;if(n.Web){var wb=Bounds(web.GetAttribute("bounds"));var parent=web.ParentNode as XmlElement;if(parent!=null){var pb=Bounds(parent.GetAttribute("bounds"));if(wb[2]>wb[0]&&wb[3]>wb[1]&&pb[2]>pb[0]&&pb[3]>pb[1]){n.ScaleX=(pb[2]-pb[0])/(double)(wb[2]-wb[0]);n.ScaleY=(pb[3]-pb[1])/(double)(wb[3]-wb[1]);n.OffsetX=pb[0]-wb[0]*n.ScaleX;n.OffsetY=pb[1]-wb[1]*n.ScaleY;}}}result.Nodes.Add(n);}return result;}
  public static async Task<AndroidPage> Read(Config c){await DeviceGate.WaitAsync();try{
@@ -119,7 +119,7 @@ static class AndroidClient {
    if(close==null)throw new InvalidOperationException("雷电广告遮挡了应用，但未识别到可用的关闭按钮；本次停止操作，请导出诊断。");
    state("检测到雷电广告，正在后台关闭广告…");
    await Shell(c,"input tap "+close.X.ToString(CultureInfo.InvariantCulture)+" "+close.Y.ToString(CultureInfo.InvariantCulture));
-   await Task.Delay(800);
+   await Operation.Delay(800);
   }
   if(AndroidNavigation.HasEmulatorAd(await Read(c)))throw new InvalidOperationException("已尝试关闭雷电广告三次，广告仍未消失；本次停止操作，请查看隐藏页。");
   return true;
@@ -145,25 +145,25 @@ static class AndroidClient {
  }
  static async Task<AndroidPage> OpenAttendance(Config c,bool restart,Action<string> state){
   if(restart){state("正在重新打开模拟器内的智汇福大…");await CloseApp(c);}
-  await LaunchApp(c);await Task.Delay(1500);
+  await LaunchApp(c);await Operation.Delay(1500);
   bool serviceTapped=false,relaunched=false;DateTime began=DateTime.UtcNow;AndroidPage last=null;
   for(int i=0;i<30&&DateTime.UtcNow-began<TimeSpan.FromSeconds(90);i++){
    var page=await Read(c);last=page;lastNavigation=AndroidNavigation.Summary(page);
-   if(await DismissAd(c,page,state)){serviceTapped=false;await LaunchApp(c);await Task.Delay(1200);continue;}
-   if(page.Attendance){if(!String.IsNullOrEmpty(page.Date)&&page.Date!=Store.Now().ToString("yyyy-MM-dd")){await Shell(c,"input keyevent 4");await Task.Delay(700);continue;}return page;}
+   if(await DismissAd(c,page,state)){serviceTapped=false;await LaunchApp(c);await Operation.Delay(1200);continue;}
+   if(page.Attendance){if(!String.IsNullOrEmpty(page.Date)&&page.Date!=Store.Now().ToString("yyyy-MM-dd")){await Shell(c,"input keyevent 4");await Operation.Delay(700);continue;}return page;}
    string hint=AndroidNavigation.Hint(page);
    if(hint.Contains("权限提示")||hint.Contains("登录页面"))throw new InvalidOperationException(hint);
    var entry=AndroidNavigation.Find(page,"晚点名签到");
-   if(entry!=null){state("已找到晚点名入口，正在打开…");await Tap(c,page,entry);await Task.Delay(1600);continue;}
+   if(entry!=null){state("已找到晚点名入口，正在打开…");await Tap(c,page,entry);await Operation.Delay(1600);continue;}
    var service=AndroidNavigation.Find(page,"业务")??AndroidNavigation.Find(page,"服务")??AndroidNavigation.Find(page,"办事");
    if(service!=null){
     if(!serviceTapped){state("正在打开业务页并查找晚点名入口…");await Tap(c,page,service);serviceTapped=true;}
     else {int x=page.Width/2;await Shell(c,"input swipe "+x+" "+(page.Height*8/10)+" "+x+" "+(page.Height*3/10)+" 400");}
-    await Task.Delay(900);continue;
+    await Operation.Delay(900);continue;
    }
    if(!relaunched&&DateTime.UtcNow-began>TimeSpan.FromSeconds(8)&&hint.Contains("安卓桌面")){state("应用尚未进入前台，正在重试启动…");await LaunchApp(c);relaunched=true;}
    if(i%4==0)state("正在等待智汇福大页面："+hint);
-   await Task.Delay(1200);
+   await Operation.Delay(1200);
   }
   throw new InvalidOperationException((last==null?"未读到安卓页面。":AndroidNavigation.Hint(last))+" 请点“导出诊断”，本次未进入签到操作。");
  }
@@ -186,9 +186,9 @@ static class AndroidClient {
  public static async Task CloseApp(Config c){await Shell(c,"am force-stop "+Package);}
  public static async Task<bool> Check(Config c,bool dry,bool force,Func<bool> restartRequested,Action clearRestart,Action<string> state){
   SavedPosition(c);IntPtr foreground=GetForegroundWindow();await Ensure(c,state);await RefreshPosition(c);Store.Log("安卓后台连接已建立，前台窗口"+(foreground==GetForegroundWindow()?"未改变。":"由用户或其他程序改变；助手未请求前台切换。"));int restarts=0;
-  while(true){bool restart=restartRequested();if(restart)clearRestart();var page=await OpenAttendance(c,restart,state);if(page.Attendance&&!page.Confirmed){await Shell(c,"input keyevent 4");await Task.Delay(700);page=await OpenAttendance(c,false,state);}bool submit=!dry||(restart&&Rules.Due(c,Store.Now(),true));
+  while(true){bool restart=restartRequested();if(restart)clearRestart();var page=await OpenAttendance(c,restart,state);if(page.Attendance&&!page.Confirmed){await Shell(c,"input keyevent 4");await Operation.Delay(700);page=await OpenAttendance(c,false,state);}bool submit=!dry||(restart&&Rules.Due(c,Store.Now(),true));
    // A saved point is not a new GPS event. Publish it AFTER the page starts requesting location.
-   await Task.Delay(1200);await RefreshPosition(c);state("已在后台重新发送助手保存的签到位置，正在等待晚点名读取定位…");DateTime began=DateTime.UtcNow,nextPosition=began.AddSeconds(5);DateTime? limitSince=null;bool retryOpen=false;
+   await Operation.Delay(1200);await RefreshPosition(c);state("已在后台重新发送助手保存的签到位置，正在等待晚点名读取定位…");DateTime began=DateTime.UtcNow,nextPosition=began.AddSeconds(5);DateTime? limitSince=null;bool retryOpen=false;
    for(int attempts=0;attempts<40;attempts++){if(restartRequested()){retryOpen=true;break;}page=await Read(c);
     if(await DismissAd(c,page,state)){page=await OpenAttendance(c,false,state);await RefreshPosition(c);}
     string today=Store.Now().ToString("yyyy-MM-dd");if(page.Attendance&&page.Date==today&&page.Confirmed){c.SuccessDate=today;if(submit)c.ClosePending=true;state("今日已签到，已确认安卓页面结果。");return submit;}
@@ -197,11 +197,11 @@ static class AndroidClient {
     if(page.Limited){if(!limitSince.HasValue)limitSince=DateTime.UtcNow;if(Engine.LimitExpired(limitSince,DateTime.UtcNow,true)){retryOpen=true;break;}}else limitSince=null;
     if(page.Date==today&&page.Ready!=null&&page.Reason=="可签到"&&!page.LoginExpired){if(!submit){state("定位刷新成功：安卓晚点名页面已显示“点击签到”；本次检查未提交。");return false;}if(!Rules.InWindow(Store.Now())){state("已超出签到时段，未提交。");return false;}
      // Read the live page again, including its date and enabled label, immediately before the tap.
-     var live=await Read(c);if(await DismissAd(c,live,state)){page=await OpenAttendance(c,false,state);await RefreshPosition(c);continue;}if(restartRequested()){retryOpen=true;break;}if(!live.CanSubmit(Store.Now())||(!force&&!c.Enabled)){state("页面状态已变化，本次未提交；稍后重试。");return false;}await Tap(c,live,live.Ready);state("已点击安卓页面签到按钮，正在核验结果…");for(int i=0;i<10;i++){await Task.Delay(1200);var checkedPage=await Read(c);if(await DismissAd(c,checkedPage,state)){checkedPage=await Read(c);}if(checkedPage.Attendance&&checkedPage.Date==today&&checkedPage.Confirmed){c.SuccessDate=today;c.ClosePending=true;state("签到成功，已确认安卓晚点名页面显示“已签到”。");try{File.WriteAllBytes(Store.FilePath("last-success.png"),await Capture(c));}catch{}return true;}}state("已点击安卓页面，但尚未确认成功；5 分钟后重新检查。");return false;}
+     var live=await Read(c);if(await DismissAd(c,live,state)){page=await OpenAttendance(c,false,state);await RefreshPosition(c);continue;}if(restartRequested()){retryOpen=true;break;}if(!live.CanSubmit(Store.Now())||(!force&&!c.Enabled)){state("页面状态已变化，本次未提交；稍后重试。");return false;}await Tap(c,live,live.Ready);state("已点击安卓页面签到按钮，正在核验结果…");for(int i=0;i<10;i++){await Operation.Delay(1200);var checkedPage=await Read(c);if(await DismissAd(c,checkedPage,state)){checkedPage=await Read(c);}if(checkedPage.Attendance&&checkedPage.Date==today&&checkedPage.Confirmed){c.SuccessDate=today;c.ClosePending=true;state("签到成功，已确认安卓晚点名页面显示“已签到”。");try{File.WriteAllBytes(Store.FilePath("last-success.png"),await Capture(c));}catch(OperationCanceledException){throw;}catch{}return true;}}state("已点击安卓页面，但尚未确认成功；5 分钟后重新检查。");return false;}
     if((DateTime.UtcNow-began).TotalSeconds>=8&&page.Date==today&&!page.Locating&&!page.Limited&&page.Reason!="页面尚未准备好"){state("定位已刷新，当前页面提示："+page.Reason+"。稍后重试。");return false;}
-    if(DateTime.UtcNow>=nextPosition){await RefreshPosition(c);nextPosition=DateTime.UtcNow.AddSeconds(5);}if((DateTime.UtcNow-began).TotalSeconds>=110)break;await Task.Delay(1500);
+    if(DateTime.UtcNow>=nextPosition){await RefreshPosition(c);nextPosition=DateTime.UtcNow.AddSeconds(5);}if((DateTime.UtcNow-began).TotalSeconds>=110)break;await Operation.Delay(1500);
    }
-   if(retryOpen&&restarts++<2){state("定位等待已达到一分钟或收到重开请求，正在重新进入晚点名…");clearRestart();await CloseApp(c);await Task.Delay(600);await LaunchApp(c);continue;}
+   if(retryOpen&&restarts++<2){state("定位等待已达到一分钟或收到重开请求，正在重新进入晚点名…");clearRestart();await CloseApp(c);await Operation.Delay(600);await LaunchApp(c);continue;}
    state("已重新发送定位，但页面仍未准备好；5 分钟后重试，可查看隐藏页。");return false;
   }
  }
