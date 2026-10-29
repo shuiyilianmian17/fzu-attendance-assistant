@@ -182,25 +182,25 @@ static class AndroidClient {
  }
  public static async Task<byte[]> Capture(Config c){await DeviceGate.WaitAsync();try{byte[] data=await Adb(c,"exec-out screencap -p",15);if(data.Length<8||data[0]!=137||data[1]!=80||data[2]!=78||data[3]!=71)throw new InvalidOperationException("模拟器画面暂不可用。");return data;}finally{DeviceGate.Release();}}
  public static async Task CloseApp(Config c){await Shell(c,"am force-stop "+Package);}
- public static async Task Check(Config c,bool dry,bool force,Func<bool> restartRequested,Action clearRestart,Action<string> state){
+ public static async Task<bool> Check(Config c,bool dry,bool force,Func<bool> restartRequested,Action clearRestart,Action<string> state){
   IntPtr foreground=GetForegroundWindow();await Ensure(c,state);Store.Log("安卓后台连接已建立，前台窗口"+(foreground==GetForegroundWindow()?"未改变。":"由用户或其他程序改变；助手未请求前台切换。"));int restarts=0;
   while(true){bool restart=restartRequested();if(restart)clearRestart();var page=await OpenAttendance(c,restart,state);bool submit=!dry||(restart&&Rules.Due(c,Store.Now(),true));
    // A saved point is not a new GPS event. Publish it AFTER the page starts requesting location.
    await Task.Delay(1200);await RefreshPosition(c);state("已在后台重新发送模拟器中已选的位置，正在等待晚点名读取定位…");DateTime began=DateTime.UtcNow,nextPosition=began.AddSeconds(5);DateTime? limitSince=null;bool retryOpen=false;
    for(int attempts=0;attempts<40;attempts++){if(restartRequested()){retryOpen=true;break;}page=await Read(c);
     if(await DismissAd(c,page,state)){page=await OpenAttendance(c,false,state);await RefreshPosition(c);}
-    string today=Store.Now().ToString("yyyy-MM-dd");if(page.Attendance&&page.Date==today&&page.Confirmed){c.SuccessDate=today;state("今日已签到，已确认安卓页面结果。");return;}
+    string today=Store.Now().ToString("yyyy-MM-dd");if(page.Attendance&&page.Date==today&&page.Confirmed){c.SuccessDate=today;if(submit)c.ClosePending=true;state("今日已签到，已确认安卓页面结果。");return submit;}
     if(page.LoginExpired)throw new InvalidOperationException("智汇福大登录已失效，请在模拟器中重新登录。");if(!page.Attendance)throw new InvalidOperationException("模拟器当前已离开晚点名页，请重新检查连接。");
-    if(submit&&!force&&!c.Enabled){state("自动签到已暂停，已停止本次操作。");return;}
+    if(submit&&!force&&!c.Enabled){state("自动签到已暂停，已停止本次操作。");return false;}
     if(page.Limited){if(!limitSince.HasValue)limitSince=DateTime.UtcNow;if(Engine.LimitExpired(limitSince,DateTime.UtcNow,true)){retryOpen=true;break;}}else limitSince=null;
-    if(page.Date==today&&page.Ready!=null&&page.Reason=="可签到"&&!page.LoginExpired){if(!submit){state("定位刷新成功：安卓晚点名页面已显示“点击签到”；本次检查未提交。");return;}if(!Rules.InWindow(Store.Now())){state("已超出签到时段，未提交。");return;}
+    if(page.Date==today&&page.Ready!=null&&page.Reason=="可签到"&&!page.LoginExpired){if(!submit){state("定位刷新成功：安卓晚点名页面已显示“点击签到”；本次检查未提交。");return false;}if(!Rules.InWindow(Store.Now())){state("已超出签到时段，未提交。");return false;}
      // Read the live page again, including its date and enabled label, immediately before the tap.
-     var live=await Read(c);if(await DismissAd(c,live,state)){page=await OpenAttendance(c,false,state);await RefreshPosition(c);continue;}if(restartRequested()){retryOpen=true;break;}if(!live.CanSubmit(Store.Now())||(!force&&!c.Enabled)){state("页面状态已变化，本次未提交；稍后重试。");return;}await Tap(c,live,live.Ready);state("已点击安卓页面签到按钮，正在核验结果…");for(int i=0;i<10;i++){await Task.Delay(1200);var checkedPage=await Read(c);if(await DismissAd(c,checkedPage,state)){checkedPage=await Read(c);}if(checkedPage.Attendance&&checkedPage.Date==today&&checkedPage.Confirmed){c.SuccessDate=today;state("签到成功，已确认安卓晚点名页面显示“已签到”。");return;}}state("已点击安卓页面，但尚未确认成功；5 分钟后重新检查。");return;}
-    if(page.Date==today&&!page.Locating&&!page.Limited&&page.Reason!="页面尚未准备好"){state("定位已刷新，当前页面提示："+page.Reason+"。稍后重试。");return;}
+     var live=await Read(c);if(await DismissAd(c,live,state)){page=await OpenAttendance(c,false,state);await RefreshPosition(c);continue;}if(restartRequested()){retryOpen=true;break;}if(!live.CanSubmit(Store.Now())||(!force&&!c.Enabled)){state("页面状态已变化，本次未提交；稍后重试。");return false;}await Tap(c,live,live.Ready);state("已点击安卓页面签到按钮，正在核验结果…");for(int i=0;i<10;i++){await Task.Delay(1200);var checkedPage=await Read(c);if(await DismissAd(c,checkedPage,state)){checkedPage=await Read(c);}if(checkedPage.Attendance&&checkedPage.Date==today&&checkedPage.Confirmed){c.SuccessDate=today;c.ClosePending=true;state("签到成功，已确认安卓晚点名页面显示“已签到”。");return true;}}state("已点击安卓页面，但尚未确认成功；5 分钟后重新检查。");return false;}
+    if(page.Date==today&&!page.Locating&&!page.Limited&&page.Reason!="页面尚未准备好"){state("定位已刷新，当前页面提示："+page.Reason+"。稍后重试。");return false;}
     if(DateTime.UtcNow>=nextPosition){await RefreshPosition(c);nextPosition=DateTime.UtcNow.AddSeconds(5);}if((DateTime.UtcNow-began).TotalSeconds>=110)break;await Task.Delay(1500);
    }
    if(retryOpen&&restarts++<2){state("定位等待已达到一分钟或收到重开请求，正在重新进入晚点名…");clearRestart();await CloseApp(c);await Task.Delay(600);await LaunchApp(c);continue;}
-   state("已重新发送定位，但页面仍未准备好；5 分钟后重试，可查看隐藏页。");return;
+   state("已重新发送定位，但页面仍未准备好；5 分钟后重试，可查看隐藏页。");return false;
   }
  }
 }

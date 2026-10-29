@@ -31,6 +31,7 @@ public class Config {
  public string LastState="请先在运行环境中选择 MuMu，并在签到设置中启用自动签到。";
  public string EmulatorPath="";
  public int EmulatorIndex=0;
+ public bool ClosePending=false;
  public bool ManualEmulator=false;
  public string EmulatorResumeAt="";
 }
@@ -43,14 +44,16 @@ static class Rules {
 }
 class Engine {
  public Config Config; public Action<string> Update; public bool IsBusy {get{return busy;}}
- bool busy,restartRequested;DateTime retry=DateTime.MinValue;
+ bool busy,restartRequested;DateTime retry=DateTime.MinValue,closeRetry=DateTime.MinValue;
+ internal Func<Config,bool,bool,Func<bool>,Action,Action<string>,Task<bool>> AndroidCheck=AndroidClient.Check;
+ internal Func<Config,Action<string>,Task> EmulatorStop=AndroidClient.StopEmulator;
  public Engine(Config c,Action<string> update){Config=c;Update=update;}
  public void State(string text){Config.LastState=text;Store.Save(Config);Store.Log(text);if(Update!=null)Update(text);}
  public static bool LimitExpired(DateTime? since,DateTime now,bool limited){return limited&&since.HasValue&&(now-since.Value).TotalSeconds>=60;}
  public async Task RestartClient(){if(Config.ManualEmulator){State("当前为手动操作模式，请先关闭模拟器，再重启安卓应用。");return;}restartRequested=true;if(busy){State("已请求重新打开智汇福大，正在结束本次检查…");return;}await Check(true,true,true);}
  public async Task OpenEmulator(){
   if(busy){State("正在处理签到或模拟器操作，请稍后再打开窗口。");return;}
-  busy=true;Config.ManualEmulator=true;Config.EmulatorResumeAt="";Store.Save(Config);
+  busy=true;Config.ClosePending=false;Config.ManualEmulator=true;Config.EmulatorResumeAt="";Store.Save(Config);
   try{await AndroidClient.OpenEmulatorWindow(Config,State);State("模拟器窗口已打开，可手动登录或操作；自动签到暂缓，关闭模拟器后恢复定时。");}
   catch(Exception e){Config.ManualEmulator=false;State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
   finally{busy=false;}
@@ -62,17 +65,26 @@ class Engine {
   catch(Exception e){State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
   finally{busy=false;}
  }
- void ManualClosed(){restartRequested=false;Config.ManualEmulator=false;Config.EmulatorResumeAt=Rules.NextPlan(Config,Store.Now()).ToString("yyyy-MM-dd HH:mm:ss");State("模拟器已关闭；下次将在 "+Config.EmulatorResumeAt+" 按计划启动，手动检查可提前恢复。");}
+ void ManualClosed(){Config.ClosePending=false;restartRequested=false;Config.ManualEmulator=false;Config.EmulatorResumeAt=Rules.NextPlan(Config,Store.Now()).ToString("yyyy-MM-dd HH:mm:ss");State("模拟器已关闭；下次将在 "+Config.EmulatorResumeAt+" 按计划启动，手动检查可提前恢复。");}
  public async Task ObserveManualWindow(){
   if(busy||!Config.ManualEmulator)return;busy=true;
   try{if(!await AndroidClient.ManualWindowVisible(Config))ManualClosed();}
   catch{State("手动操作模式下未能确认模拟器窗口，请用“关闭模拟器”结束手动操作。");}
   finally{busy=false;}
  }
+ async Task CloseConfirmedCore(){
+  try{await EmulatorStop(Config,State);Config.ClosePending=false;State("签到已确认成功，模拟器已自动关闭；助手继续等待下一次签到。");}
+  catch(Exception e){closeRetry=Store.Now().AddMinutes(1);State("签到已确认成功，但模拟器关闭未完成；一分钟后仅重试关闭，不会重复签到。"+(e is InvalidOperationException?e.Message:Store.SafeError(e)));}
+ }
+ public async Task FinishCompletedSignIn(){
+  if(busy||Config.ManualEmulator||!Config.ClosePending||Store.Now()<closeRetry)return;
+  busy=true;try{await CloseConfirmedCore();}finally{busy=false;}
+ }
  public async Task Check(bool dry,bool catchup,bool force){
   if(busy)return;if(Config.ManualEmulator){if(force)State("当前为手动操作模式，请先关闭模拟器，再检查连接或签到。");return;}
+  if(Config.ClosePending){await FinishCompletedSignIn();return;}
   if(force){Config.EmulatorResumeAt="";Store.Save(Config);}if(!restartRequested&&!dry&&!force&&(!Rules.Due(Config,Store.Now(),catchup)||Store.Now()<retry))return;
-  busy=true;try{await AndroidClient.Check(Config,dry,force,()=>restartRequested,()=>restartRequested=false,State);}
+  busy=true;try{bool confirmed=await AndroidCheck(Config,dry,force,()=>restartRequested,()=>restartRequested=false,State);if(confirmed){Config.ClosePending=true;Store.Save(Config);await CloseConfirmedCore();}}
   catch(Exception e){State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
   finally{busy=false;if(!dry)retry=Store.Now().AddMinutes(5);}
  }
@@ -95,9 +107,9 @@ class MainForm:Form {
   Shown+=delegate{StartService();};
  }
  protected override void SetVisibleCore(bool value){if(value&&hideInitial){hideInitial=false;if(!IsHandleCreated)CreateHandle();BeginInvoke(new Action(StartService));return;}base.SetVisibleCore(value);}
- async void StartService(){if(!initial)return;initial=false;timer.Start();lastTick=Store.Now();await engine.ObserveManualWindow();if(config.ManualEmulator){engine.State("手动操作模式已恢复，关闭模拟器后恢复定时签到。");return;}if(Rules.Deferred(config,Store.Now())){engine.State("模拟器已关闭，下次将在 "+config.EmulatorResumeAt+" 按计划启动。");return;}if(Rules.Due(config,Store.Now(),true))await engine.Check(false,true,false);else engine.State(config.Enabled?"助手已在后台等待，每天 "+config.Time+" 启动或连接模拟器并签到。":"自动签到已暂停。");}
+ async void StartService(){if(!initial)return;initial=false;timer.Start();lastTick=Store.Now();await engine.ObserveManualWindow();if(config.ClosePending&&!config.ManualEmulator){await engine.FinishCompletedSignIn();return;}if(config.ManualEmulator){engine.State("手动操作模式已恢复，关闭模拟器后恢复定时签到。");return;}if(Rules.Deferred(config,Store.Now())){engine.State("模拟器已关闭，下次将在 "+config.EmulatorResumeAt+" 按计划启动。");return;}if(Rules.Due(config,Store.Now(),true))await engine.Check(false,true,false);else engine.State(config.Enabled?"助手已在后台等待，每天 "+config.Time+" 启动或连接模拟器并签到。":"自动签到已暂停。");}
  void SaveSchedule(){string chosen=ui.Time;if(!Rules.ValidTime(chosen)){ui.Feedback("请选择 21:00–23:59 内的时间。",true);return;}try{Startup.Set(ui.StartupEnabled);config.Time=chosen;config.Enabled=ui.Enabled;if(Rules.Deferred(config,Store.Now()))config.EmulatorResumeAt=Rules.NextPlan(config,Store.Now()).ToString("yyyy-MM-dd HH:mm:ss");Store.Save(config);ui.Refresh(config);ui.Feedback("已保存：每天 "+chosen+"，"+(config.Enabled?"自动签到已开启。":"自动签到已暂停。"),false);}catch{ui.Feedback("保存未完成，请检查当前账户的写入权限。",true);}}
- void SaveEnvironment(){if(config.ManualEmulator){ui.Feedback("请先关闭模拟器，再修改运行环境。",true);return;}if(engine.IsBusy){ui.Feedback("正在检查签到状态，请等待完成后再保存运行环境。",true);return;}try{int index;if(!AndroidClient.ValidConsole(ui.EmulatorPath)||!Int32.TryParse(ui.EmulatorIndex,out index)||index<0||index>99){ui.Feedback("请选择雷电或 MuMu 控制程序，实例编号为 0–99。",true);return;}var candidate=new Config{EmulatorPath=Path.GetFullPath(ui.EmulatorPath),EmulatorIndex=index};AndroidClient.SavedPosition(candidate);config.EmulatorPath=candidate.EmulatorPath;config.EmulatorIndex=index;Store.Save(config);ui.Refresh(config);ui.Feedback("运行环境已保存，可到概览检查连接。",false);}catch(InvalidOperationException e){ui.Feedback(e.Message,true);}catch{ui.Feedback("保存未完成，请检查程序路径和实例编号。",true);}}
+ void SaveEnvironment(){if(config.ClosePending){ui.Feedback("正在等待关闭已签到的模拟器，请先关闭模拟器，或打开手动窗口取消自动关闭后再修改。",true);return;}if(config.ManualEmulator){ui.Feedback("请先关闭模拟器，再修改运行环境。",true);return;}if(engine.IsBusy){ui.Feedback("正在检查签到状态，请等待完成后再保存运行环境。",true);return;}try{int index;if(!AndroidClient.ValidConsole(ui.EmulatorPath)||!Int32.TryParse(ui.EmulatorIndex,out index)||index<0||index>99){ui.Feedback("请选择雷电或 MuMu 控制程序，实例编号为 0–99。",true);return;}var candidate=new Config{EmulatorPath=Path.GetFullPath(ui.EmulatorPath),EmulatorIndex=index};AndroidClient.SavedPosition(candidate);config.EmulatorPath=candidate.EmulatorPath;config.EmulatorIndex=index;Store.Save(config);ui.Refresh(config);ui.Feedback("运行环境已保存，可到概览检查连接。",false);}catch(InvalidOperationException e){ui.Feedback(e.Message,true);}catch{ui.Feedback("保存未完成，请检查程序路径和实例编号。",true);}}
  void ShowHiddenPage(){if(preview==null||preview.IsDisposed)preview=new HiddenPagePreview();if(!preview.Visible)preview.Show(this);preview.WindowState=FormWindowState.Normal;preview.Activate();}
  async void ExportDiagnostics(){using(var dialog=new System.Windows.Forms.SaveFileDialog{Title="导出诊断",Filter="诊断文本 (*.txt)|*.txt",FileName="晚点名助手诊断.txt"}){if(dialog.ShowDialog(this)!=DialogResult.OK)return;try{File.WriteAllText(dialog.FileName,await AndroidClient.Diagnostic(config),Encoding.UTF8);ui.Feedback("诊断已导出，不含账号、坐标或截图；本次未提交签到。",false);}catch{ui.Feedback("诊断导出未完成，请确认保存位置可写。",true);}}}
  async void CheckUpdate(){
@@ -123,6 +135,7 @@ static class Program {
  internal static readonly EventWaitHandle ShowRequest=new EventWaitHandle(false,EventResetMode.AutoReset,@"Local\FzuAttendanceAssistant.ShowSettings.v1");
  [STAThread]static int Main(string[] args){try{
   if(args.Contains("--install-update"))return UpdateClient.Worker(args);
+  if(args.Contains("--completion-test")){CompletionTests.Run().GetAwaiter().GetResult();return 0;}
   if(args.Contains("--update-test")){UpdateClient.Tests();return 0;}
   if(args.Contains("--update-probe")){var release=UpdateClient.Latest();string file=UpdateClient.Download(release);File.WriteAllText(Store.FilePath("更新下载检查.txt"),"已从 GitHub 获取 v"+release.Version+" 并验证安装包 SHA256。未启动安装。\n"+file);return 0;}
   if(args.Contains("--discovery-probe")){File.WriteAllText(Store.FilePath("模拟器查找检查.txt"),AndroidClient.Detect("")??"未找到");return 0;}

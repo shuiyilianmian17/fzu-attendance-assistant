@@ -4,11 +4,11 @@ Windows 桌面辅助程序，通过雷电或 MuMu 模拟器中的安卓版智汇
 
 ## 下载安装
 
-**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.5.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
+**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.6.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
 
 升级时先从托盘退出旧版助手，再安装新版，原设置会保留。
 
-下载 `FzuAttendanceAssistant-Setup-1.0.5.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
+下载 `FzuAttendanceAssistant-Setup-1.0.6.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
 
 需要 Windows 10 1903 及以上或 Windows 11，64 位系统与 .NET Framework 4.8。现代 Windows 已包含这一运行环境。
 
@@ -74,3 +74,7 @@ powershell -ExecutionPolicy Bypass -File .\release.ps1 -IsccPath 'C:\Program Fil
 自动查找优先识别 MuMu，检查运行进程、当前用户和系统安装记录、应用路径、快捷方式，以及各固定磁盘的常见安装目录；也兼容雷电。找到后保存运行环境即可。无法识别的自定义安装仍可手动选择控制程序。
 
 在签到概览或托盘菜单点击“检查更新”。确认新版后自动从本仓库下载安装包，验证 SHA-256，再覆盖更新并在托盘重新运行。保留现有时间、模拟器路径和自启选择；便携版更新保留原数据目录。网络或校验失败不会启动安装。GitHub 公共接口限流时使用官方发布页和校验文件回退。旧版本需要手动安装 v1.0.5 一次，以后可在软件内更新。
+
+## 签到后自动关闭
+
+自动签到或“立即尝试签到”确认当日页面显示“已签到／签到成功”后，助手会自动关闭所选模拟器实例，并记录关闭完成。关闭失败时保留成功结果和待关闭状态，每分钟重试关闭，不重复签到；助手重启后继续恢复待关闭操作。手动操作模式不会被自动关闭，只读检查与重新定位不会触发这一流程。
