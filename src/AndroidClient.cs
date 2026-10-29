@@ -59,10 +59,46 @@ static class AndroidClient {
  static async Task<byte[]> Adb(Config c,string args,int seconds){return await Command(AdbPath(c),"-s "+Device(c)+" "+args,seconds);}
  static async Task<string> Shell(Config c,string args){return Encoding.UTF8.GetString(await Adb(c,"shell "+args,15));}
  [DllImport("user32.dll")]static extern bool ShowWindow(IntPtr h,int cmd);
+ [DllImport("user32.dll")]static extern bool SetForegroundWindow(IntPtr h);
+ [DllImport("user32.dll")]static extern bool IsWindowVisible(IntPtr h);
  [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
  [DllImport("user32.dll")]internal static extern IntPtr GetForegroundWindow();
  static bool InstanceRunning(string line,Config c,out IntPtr window){window=IntPtr.Zero;var fields=line.Trim().Split(',');int index,run,pid;long handle;if(fields.Length<7||!Int32.TryParse(fields[0],out index)||index!=c.EmulatorIndex||!Int32.TryParse(fields[4],out run)||run!=1)return false;if(Int64.TryParse(fields[2],out handle)&&Int32.TryParse(fields[5],out pid)){uint owner;var h=new IntPtr(handle);GetWindowThreadProcessId(h,out owner);if(owner==(uint)pid)window=h;}return true;}
  public static async Task Hide(Config c){var list=await Console(c,"list2");foreach(var line in list.Split('\n')){IntPtr window;if(InstanceRunning(line,c,out window)&&window!=IntPtr.Zero)ShowWindow(window,0);}}
+ static async Task<IntPtr> InstanceWindow(Config c){
+  foreach(string line in (await Console(c,"list2")).Split('\n')){
+   var f=line.Trim().Split(',');int index,pid;long handle;
+   if(f.Length<7||!Int32.TryParse(f[0],out index)||index!=c.EmulatorIndex||!Int32.TryParse(f[5],out pid)||pid<=0||!Int64.TryParse(f[2],out handle)||handle==0)continue;
+   uint owner;var window=new IntPtr(handle);GetWindowThreadProcessId(window,out owner);if(owner==(uint)pid)return window;
+  }
+  return IntPtr.Zero;
+ }
+ public static async Task<bool> ManualWindowVisible(Config c){var window=await InstanceWindow(c);return window!=IntPtr.Zero&&IsWindowVisible(window);}
+ static async Task<bool> DeviceOnline(Config c){try{return (await Shell(c,"getprop sys.boot_completed")).Trim()=="1";}catch{return false;}}
+ public static async Task StopEmulator(Config c,Action<string> state){
+  Index(c);if(!ValidConsole(c.EmulatorPath))throw new InvalidOperationException("请先选择雷电控制程序。");
+  state("正在关闭所选雷电模拟器…");
+  // A console on the normal desktop cannot always find a hidden-desktop player.
+  EmulatorHost.QuitHidden(c);await Console(c,"quit --index "+Index(c));
+  for(int i=0;i<35;i++){
+   if(!await DeviceOnline(c)&&await InstanceWindow(c)==IntPtr.Zero){await Task.Delay(1000);return;}
+   await Task.Delay(700);
+  }
+  throw new InvalidOperationException("模拟器尚未完全关闭，请查看雷电是否显示退出提示，再重试。");
+ }
+ public static async Task OpenEmulatorWindow(Config c,Action<string> state){
+  Index(c);if(!ValidConsole(c.EmulatorPath))throw new InvalidOperationException("请先选择雷电控制程序。");
+  var window=await InstanceWindow(c);
+  if(window==IntPtr.Zero){
+   if(await DeviceOnline(c)){state("正在将后台实例重新打开到当前桌面…");await StopEmulator(c,state);}
+   state("正在打开雷电模拟器窗口…");
+   // Do not redirect launch output: the player can inherit the pipe and keep it open.
+   using(var launch=Process.Start(new ProcessStartInfo(c.EmulatorPath,"launch --index "+Index(c)){UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden,WorkingDirectory=Path.GetDirectoryName(c.EmulatorPath)})){}
+   for(int i=0;i<60&&window==IntPtr.Zero;i++){await Task.Delay(1000);window=await InstanceWindow(c);}
+  }
+  if(window==IntPtr.Zero)throw new InvalidOperationException("未找到所选模拟器窗口，请导出诊断。");
+  ShowWindow(window,9);SetForegroundWindow(window);
+ }
  static async Task Ensure(Config c,Action<string> state){Index(c);if(!ValidConsole(c.EmulatorPath))throw new InvalidOperationException("请在运行环境页选择雷电的 ldconsole.exe。");try{if((await Shell(c,"getprop sys.boot_completed")).Trim()=="1"){await Hide(c);return;}}catch{}string list=await Console(c,"list2");bool running=list.Split('\n').Any(line=>{IntPtr w;return InstanceRunning(line,c,out w);});if(!running){state("正在隐藏桌面启动雷电模拟器…");if(!EmulatorHost.Start(c))throw new InvalidOperationException("雷电未能在隐藏桌面启动。");}for(int i=0;i<60;i++){await Hide(c);try{string ready=(await Shell(c,"getprop sys.boot_completed")).Trim();if(ready=="1")return;}catch{}await Task.Delay(1000);}throw new InvalidOperationException("模拟器启动尚未完成，请稍后重试。");}
  static int[] Bounds(string text){var matches=Regex.Matches(text??"",@"-?\d+");if(matches.Count!=4)return new int[4];return matches.Cast<Match>().Select(x=>Int32.Parse(x.Value,CultureInfo.InvariantCulture)).ToArray();}
  public static AndroidPage ParsePage(string xml,int screenWidth=0,int screenHeight=0){var doc=new XmlDocument{XmlResolver=null};doc.LoadXml(xml);var result=new AndroidPage();var root=doc.SelectSingleNode("/hierarchy/node") as XmlElement;if(root==null)throw new InvalidOperationException("没有读到模拟器画面。");var screen=Bounds(root.GetAttribute("bounds"));result.Width=screen[2]-screen[0];result.Height=screen[3]-screen[1];if(screenWidth>0&&screenHeight>0){result.Width=screenWidth;result.Height=screenHeight;}foreach(XmlElement e in doc.SelectNodes("//node")){var b=Bounds(e.GetAttribute("bounds"));var n=new AndroidNode{Text=e.GetAttribute("text"),Description=e.GetAttribute("content-desc"),Package=e.GetAttribute("package"),ResourceId=e.GetAttribute("resource-id"),Enabled=e.GetAttribute("enabled")=="true",Clickable=e.GetAttribute("clickable")=="true",Left=b[0],Top=b[1],Right=b[2],Bottom=b[3]};if(String.IsNullOrEmpty(n.Package)){for(XmlNode ancestor=e.ParentNode;ancestor is XmlElement;ancestor=ancestor.ParentNode){string inherited=((XmlElement)ancestor).GetAttribute("package");if(!String.IsNullOrEmpty(inherited)){n.Package=inherited;break;}}}XmlElement web=null;for(XmlNode a=e;a is XmlElement;a=a.ParentNode){if(((XmlElement)a).GetAttribute("class")=="android.webkit.WebView"){web=(XmlElement)a;}}n.Web=web!=null&&n.Package==Package;if(n.Web){var wb=Bounds(web.GetAttribute("bounds"));var parent=web.ParentNode as XmlElement;if(parent!=null){var pb=Bounds(parent.GetAttribute("bounds"));if(wb[2]>wb[0]&&wb[3]>wb[1]&&pb[2]>pb[0]&&pb[3]>pb[1]){n.ScaleX=(pb[2]-pb[0])/(double)(wb[2]-wb[0]);n.ScaleY=(pb[3]-pb[1])/(double)(wb[3]-wb[1]);n.OffsetX=pb[0]-wb[0]*n.ScaleX;n.OffsetY=pb[1]-wb[1]*n.ScaleY;}}}result.Nodes.Add(n);}return result;}
@@ -133,7 +169,7 @@ static class AndroidClient {
   var report=new StringBuilder();report.AppendLine("晚点名助手诊断 v"+typeof(AndroidClient).Assembly.GetName().Version);
   report.AppendLine("生成时间="+Store.Now().ToString("yyyy-MM-dd HH:mm:ss"));report.AppendLine("Windows="+Environment.OSVersion.Version);
   report.AppendLine("模拟器编号="+c.EmulatorIndex);report.AppendLine("雷电路径可用="+ValidConsole(c.EmulatorPath));
-  report.AppendLine("自动签到启用="+c.Enabled);report.AppendLine("设定时间="+c.Time);
+  report.AppendLine("手动操作模式="+c.ManualEmulator);report.AppendLine("关闭后定时等待="+Rules.Deferred(c,Store.Now()));report.AppendLine("自动签到启用="+c.Enabled);report.AppendLine("设定时间="+c.Time);
   report.AppendLine("已解析启动入口="+lastLauncher);report.AppendLine("最近导航摘要：");report.AppendLine(lastNavigation);
   if(ValidConsole(c.EmulatorPath)){
    try{string v=await Shell(c,"getprop ro.build.version.release");if(Regex.IsMatch(v.Trim(),@"^[0-9.]+$"))report.AppendLine("Android版本="+v.Trim());}catch(Exception e){report.AppendLine("Android版本读取失败="+e.GetType().Name);}

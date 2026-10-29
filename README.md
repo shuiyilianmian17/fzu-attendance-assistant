@@ -4,11 +4,11 @@ Windows 桌面辅助程序，仅通过雷电模拟器中的安卓版智汇福大
 
 ## 下载安装
 
-**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.2.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
+**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.3.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
 
 升级时先从托盘退出旧版助手，再安装新版，原设置会保留。
 
-下载 `FzuAttendanceAssistant-Setup-1.0.2.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
+下载 `FzuAttendanceAssistant-Setup-1.0.3.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
 
 需要 Windows 10 1903 及以上或 Windows 11，64 位系统与 .NET Framework 4.8。现代 Windows 已包含这一运行环境。
 
@@ -32,6 +32,7 @@ Windows 桌面辅助程序，仅通过雷电模拟器中的安卓版智汇福大
 - 只在当日页面允许签到且仍在签到时段时操作按钮。
 - 读取页面“已签到”或“签到成功”后，才将当天标记为成功；未确认成功则记录状态并稍后重试。
 - 支持显示后台只读画面、手动重新定位和重启安卓应用。
+- 可“打开模拟器窗口”进行手动登录或操作；“关闭模拟器”仅关闭所选实例，助手继续等待下次计划，手动检查可提前恢复。手动窗口打开期间暂缓自动点击。
 - 自动识别并关闭已适配的雷电广告弹窗，确认广告消失后继续打开智汇福大；未识别到关闭按钮时提示具体原因。
 - 动态解析 Android 启动入口，区分系统权限提示、登录页、安卓桌面和空白画面。
 - 入口识别失败时可点“导出诊断”，获取不含账号、坐标、令牌或截图的诊断文件。

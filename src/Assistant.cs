@@ -31,11 +31,15 @@ public class Config {
  public string LastState="请先在运行环境中选择雷电，并在签到设置中启用自动签到。";
  public string EmulatorPath="";
  public int EmulatorIndex=0;
+ public bool ManualEmulator=false;
+ public string EmulatorResumeAt="";
 }
 static class Rules {
  public static bool InWindow(DateTime now){return now.TimeOfDay>=TimeSpan.FromHours(21)&&now.TimeOfDay<TimeSpan.FromDays(1);}
  public static bool ValidTime(string text){TimeSpan t;return TimeSpan.TryParseExact(text,"hh\\:mm",null,out t)&&t>=TimeSpan.FromHours(21)&&t<TimeSpan.FromDays(1);}
- public static bool Due(Config c,DateTime now,bool catchup){if(!c.Enabled||!InWindow(now)||c.SuccessDate==now.ToString("yyyy-MM-dd"))return false;TimeSpan at;return ValidTime(c.Time)&&TimeSpan.TryParse(c.Time,out at)&&(catchup||now.TimeOfDay>=at);}
+ public static DateTime NextPlan(Config c,DateTime now){TimeSpan at;if(!TimeSpan.TryParse(c.Time,out at))at=TimeSpan.FromHours(21)+TimeSpan.FromMinutes(5);var next=now.Date+at;return next>now?next:next.AddDays(1);}
+ public static bool Deferred(Config c,DateTime now){DateTime until;return DateTime.TryParseExact(c.EmulatorResumeAt,"yyyy-MM-dd HH:mm:ss",System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.None,out until)&&now<until;}
+ public static bool Due(Config c,DateTime now,bool catchup){if(c.ManualEmulator||Deferred(c,now)||!c.Enabled||!InWindow(now)||c.SuccessDate==now.ToString("yyyy-MM-dd"))return false;TimeSpan at;return ValidTime(c.Time)&&TimeSpan.TryParse(c.Time,out at)&&(catchup||now.TimeOfDay>=at);}
 }
 class Engine {
  public Config Config; public Action<string> Update; public bool IsBusy {get{return busy;}}
@@ -43,9 +47,31 @@ class Engine {
  public Engine(Config c,Action<string> update){Config=c;Update=update;}
  public void State(string text){Config.LastState=text;Store.Save(Config);Store.Log(text);if(Update!=null)Update(text);}
  public static bool LimitExpired(DateTime? since,DateTime now,bool limited){return limited&&since.HasValue&&(now-since.Value).TotalSeconds>=60;}
- public async Task RestartClient(){restartRequested=true;if(busy){State("已请求重新打开智汇福大，正在结束本次检查…");return;}await Check(true,true,true);}
+ public async Task RestartClient(){if(Config.ManualEmulator){State("当前为手动操作模式，请先关闭模拟器，再重启安卓应用。");return;}restartRequested=true;if(busy){State("已请求重新打开智汇福大，正在结束本次检查…");return;}await Check(true,true,true);}
+ public async Task OpenEmulator(){
+  if(busy){State("正在处理签到或模拟器操作，请稍后再打开窗口。");return;}
+  busy=true;Config.ManualEmulator=true;Config.EmulatorResumeAt="";Store.Save(Config);
+  try{await AndroidClient.OpenEmulatorWindow(Config,State);State("模拟器窗口已打开，可手动登录或操作；自动签到暂缓，关闭模拟器后恢复定时。");}
+  catch(Exception e){Config.ManualEmulator=false;State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
+  finally{busy=false;}
+ }
+ public async Task CloseEmulator(){
+  if(busy){State("正在处理签到或模拟器操作，请等待本次操作结束后再关闭。");return;}
+  busy=true;
+  try{await AndroidClient.StopEmulator(Config,State);ManualClosed();}
+  catch(Exception e){State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
+  finally{busy=false;}
+ }
+ void ManualClosed(){restartRequested=false;Config.ManualEmulator=false;Config.EmulatorResumeAt=Rules.NextPlan(Config,Store.Now()).ToString("yyyy-MM-dd HH:mm:ss");State("模拟器已关闭；下次将在 "+Config.EmulatorResumeAt+" 按计划启动，手动检查可提前恢复。");}
+ public async Task ObserveManualWindow(){
+  if(busy||!Config.ManualEmulator)return;busy=true;
+  try{if(!await AndroidClient.ManualWindowVisible(Config))ManualClosed();}
+  catch{State("手动操作模式下未能确认模拟器窗口，请用“关闭模拟器”结束手动操作。");}
+  finally{busy=false;}
+ }
  public async Task Check(bool dry,bool catchup,bool force){
-  if(busy)return;if(!restartRequested&&!dry&&!force&&(!Rules.Due(Config,Store.Now(),catchup)||Store.Now()<retry))return;
+  if(busy)return;if(Config.ManualEmulator){if(force)State("当前为手动操作模式，请先关闭模拟器，再检查连接或签到。");return;}
+  if(force){Config.EmulatorResumeAt="";Store.Save(Config);}if(!restartRequested&&!dry&&!force&&(!Rules.Due(Config,Store.Now(),catchup)||Store.Now()<retry))return;
   busy=true;try{await AndroidClient.Check(Config,dry,force,()=>restartRequested,()=>restartRequested=false,State);}
   catch(Exception e){State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
   finally{busy=false;if(!dry)retry=Store.Now().AddMinutes(5);}
@@ -60,21 +86,21 @@ class MainForm:Form {
   ClientSize=new Size(1060,720);MinimumSize=new Size(950,680);StartPosition=FormStartPosition.CenterScreen;BackColor=Color.FromArgb(242,245,250);
   ui=new Dashboard(config);var host=new System.Windows.Forms.Integration.ElementHost{Dock=DockStyle.Fill,Child=ui.Root};Controls.Add(host);
   engine=new Engine(config,delegate(string state){ui.Refresh(config);ui.LoadLogs();tray.Text=("晚点名助手 · "+state).Substring(0,Math.Min(63,("晚点名助手 · "+state).Length));});
-  ui.SaveSchedule=SaveSchedule;ui.SaveEnvironment=SaveEnvironment;ui.CheckConnection=async delegate{await engine.Check(true,false,true);};ui.AttemptNow=async delegate{await engine.Check(false,true,true);};ui.LoginHelp=LoginHelp;ui.ShowHiddenPage=ShowHiddenPage;ui.RestartClient=async delegate{await engine.RestartClient();};ui.RefreshLocation=async delegate{await engine.RefreshLocation();};ui.ExportDiagnostics=ExportDiagnostics;
-  var menu=new ContextMenuStrip();menu.Items.Add("打开设置",null,delegate{Show();WindowState=FormWindowState.Normal;Activate();});menu.Items.Add("检查连接",null,async delegate{await engine.Check(true,false,true);});menu.Items.Add("显示隐藏页",null,delegate{ShowHiddenPage();});menu.Items.Add("重新定位",null,async delegate{await engine.RefreshLocation();});menu.Items.Add("重启安卓应用",null,async delegate{await engine.RestartClient();});menu.Items.Add("导出诊断",null,delegate{ExportDiagnostics();});menu.Items.Add("退出助手",null,delegate{quit=true;Close();});menu.Items.Add("退出并关闭智汇福大",null,async delegate{if(engine.IsBusy){engine.State("正在处理签到，请暂停自动签到并等本次操作结束后退出。");return;}await AndroidClient.CloseApp(config);quit=true;Close();});
+  ui.SaveSchedule=SaveSchedule;ui.SaveEnvironment=SaveEnvironment;ui.CheckConnection=async delegate{await engine.Check(true,false,true);};ui.AttemptNow=async delegate{await engine.Check(false,true,true);};ui.LoginHelp=LoginHelp;ui.ShowHiddenPage=ShowHiddenPage;ui.RestartClient=async delegate{await engine.RestartClient();};ui.RefreshLocation=async delegate{await engine.RefreshLocation();};ui.ExportDiagnostics=ExportDiagnostics;ui.OpenEmulator=async delegate{await engine.OpenEmulator();};ui.CloseEmulator=async delegate{await engine.CloseEmulator();};
+  var menu=new ContextMenuStrip();menu.Items.Add("打开设置",null,delegate{Show();WindowState=FormWindowState.Normal;Activate();});menu.Items.Add("检查连接",null,async delegate{await engine.Check(true,false,true);});menu.Items.Add("显示隐藏页",null,delegate{ShowHiddenPage();});menu.Items.Add("重新定位",null,async delegate{await engine.RefreshLocation();});menu.Items.Add("打开模拟器窗口",null,async delegate{await engine.OpenEmulator();});menu.Items.Add("关闭模拟器",null,async delegate{await engine.CloseEmulator();});menu.Items.Add("重启安卓应用",null,async delegate{await engine.RestartClient();});menu.Items.Add("导出诊断",null,delegate{ExportDiagnostics();});menu.Items.Add("退出助手",null,delegate{quit=true;Close();});menu.Items.Add("退出并关闭智汇福大",null,async delegate{if(engine.IsBusy){engine.State("正在处理签到，请暂停自动签到并等本次操作结束后退出。");return;}await AndroidClient.CloseApp(config);quit=true;Close();});
   tray=new NotifyIcon{Text="晚点名助手",Icon=this.Icon,Visible=true,ContextMenuStrip=menu};tray.DoubleClick+=delegate{Show();Activate();};
   FormClosing+=delegate(object sender,FormClosingEventArgs e){if(!quit&&e.CloseReason==CloseReason.UserClosing){e.Cancel=true;Hide();}else{tray.Visible=false;timer.Stop();showRequests.Stop();}};
   showRequests=new System.Windows.Forms.Timer{Interval=500};showRequests.Tick+=delegate{if(Program.ShowRequest.WaitOne(0)){Show();WindowState=FormWindowState.Normal;Activate();}};showRequests.Start();
-  timer=new System.Windows.Forms.Timer{Interval=15000};timer.Tick+=async delegate{DateTime now=Store.Now();bool wake=lastTick!=DateTime.MinValue&&(now-lastTick).TotalSeconds>90;lastTick=now;ui.Refresh(config);await engine.Check(false,wake,false);};
+  timer=new System.Windows.Forms.Timer{Interval=15000};timer.Tick+=async delegate{DateTime now=Store.Now();bool wake=lastTick!=DateTime.MinValue&&(now-lastTick).TotalSeconds>90;lastTick=now;ui.Refresh(config);await engine.ObserveManualWindow();await engine.Check(false,wake,false);};
   Shown+=delegate{StartService();};
  }
  protected override void SetVisibleCore(bool value){if(value&&hideInitial){hideInitial=false;if(!IsHandleCreated)CreateHandle();BeginInvoke(new Action(StartService));return;}base.SetVisibleCore(value);}
- async void StartService(){if(!initial)return;initial=false;timer.Start();lastTick=Store.Now();if(Rules.Due(config,Store.Now(),true))await engine.Check(false,true,false);else engine.State(config.Enabled?"助手已在后台等待，每天 "+config.Time+" 启动或连接模拟器并签到。":"自动签到已暂停。");}
- void SaveSchedule(){string chosen=ui.Time;if(!Rules.ValidTime(chosen)){ui.Feedback("请选择 21:00–23:59 内的时间。",true);return;}try{Startup.Set(ui.StartupEnabled);config.Time=chosen;config.Enabled=ui.Enabled;Store.Save(config);ui.Refresh(config);ui.Feedback("已保存：每天 "+chosen+"，"+(config.Enabled?"自动签到已开启。":"自动签到已暂停。"),false);}catch{ui.Feedback("保存未完成，请检查当前账户的写入权限。",true);}}
- void SaveEnvironment(){if(engine.IsBusy){ui.Feedback("正在检查签到状态，请等待完成后再保存运行环境。",true);return;}try{int index;if(!AndroidClient.ValidConsole(ui.EmulatorPath)||!Int32.TryParse(ui.EmulatorIndex,out index)||index<0||index>99){ui.Feedback("请选择雷电的 ldconsole.exe，实例编号为 0–99。",true);return;}var candidate=new Config{EmulatorPath=Path.GetFullPath(ui.EmulatorPath),EmulatorIndex=index};AndroidClient.SavedPosition(candidate);config.EmulatorPath=candidate.EmulatorPath;config.EmulatorIndex=index;Store.Save(config);ui.Refresh(config);ui.Feedback("运行环境已保存，可到概览检查连接。",false);}catch(InvalidOperationException e){ui.Feedback(e.Message,true);}catch{ui.Feedback("保存未完成，请检查程序路径和雷电实例编号。",true);}}
+ async void StartService(){if(!initial)return;initial=false;timer.Start();lastTick=Store.Now();await engine.ObserveManualWindow();if(config.ManualEmulator){engine.State("手动操作模式已恢复，关闭模拟器后恢复定时签到。");return;}if(Rules.Deferred(config,Store.Now())){engine.State("模拟器已关闭，下次将在 "+config.EmulatorResumeAt+" 按计划启动。");return;}if(Rules.Due(config,Store.Now(),true))await engine.Check(false,true,false);else engine.State(config.Enabled?"助手已在后台等待，每天 "+config.Time+" 启动或连接模拟器并签到。":"自动签到已暂停。");}
+ void SaveSchedule(){string chosen=ui.Time;if(!Rules.ValidTime(chosen)){ui.Feedback("请选择 21:00–23:59 内的时间。",true);return;}try{Startup.Set(ui.StartupEnabled);config.Time=chosen;config.Enabled=ui.Enabled;if(Rules.Deferred(config,Store.Now()))config.EmulatorResumeAt=Rules.NextPlan(config,Store.Now()).ToString("yyyy-MM-dd HH:mm:ss");Store.Save(config);ui.Refresh(config);ui.Feedback("已保存：每天 "+chosen+"，"+(config.Enabled?"自动签到已开启。":"自动签到已暂停。"),false);}catch{ui.Feedback("保存未完成，请检查当前账户的写入权限。",true);}}
+ void SaveEnvironment(){if(config.ManualEmulator){ui.Feedback("请先关闭模拟器，再修改运行环境。",true);return;}if(engine.IsBusy){ui.Feedback("正在检查签到状态，请等待完成后再保存运行环境。",true);return;}try{int index;if(!AndroidClient.ValidConsole(ui.EmulatorPath)||!Int32.TryParse(ui.EmulatorIndex,out index)||index<0||index>99){ui.Feedback("请选择雷电的 ldconsole.exe，实例编号为 0–99。",true);return;}var candidate=new Config{EmulatorPath=Path.GetFullPath(ui.EmulatorPath),EmulatorIndex=index};AndroidClient.SavedPosition(candidate);config.EmulatorPath=candidate.EmulatorPath;config.EmulatorIndex=index;Store.Save(config);ui.Refresh(config);ui.Feedback("运行环境已保存，可到概览检查连接。",false);}catch(InvalidOperationException e){ui.Feedback(e.Message,true);}catch{ui.Feedback("保存未完成，请检查程序路径和雷电实例编号。",true);}}
  void ShowHiddenPage(){if(preview==null||preview.IsDisposed)preview=new HiddenPagePreview();if(!preview.Visible)preview.Show(this);preview.WindowState=FormWindowState.Normal;preview.Activate();}
  async void ExportDiagnostics(){using(var dialog=new System.Windows.Forms.SaveFileDialog{Title="导出诊断",Filter="诊断文本 (*.txt)|*.txt",FileName="晚点名助手诊断.txt"}){if(dialog.ShowDialog(this)!=DialogResult.OK)return;try{File.WriteAllText(dialog.FileName,await AndroidClient.Diagnostic(config),Encoding.UTF8);ui.Feedback("诊断已导出，不含账号、坐标或截图；本次未提交签到。",false);}catch{ui.Feedback("诊断导出未完成，请确认保存位置可写。",true);}}}
- void LoginHelp(){MessageBox.Show(this,"1. 从托盘退出助手。\n2. 在雷电中打开智汇福大，自行完成登录。\n3. 确认晚点名签到已加入我的服务。\n4. 重新运行助手，再检查连接。","重新登录");}
+ void LoginHelp(){MessageBox.Show(this,"1. 点击“打开模拟器窗口”。\n2. 在雷电中打开智汇福大，自行完成登录。\n3. 确认晚点名签到已加入我的服务。\n4. 点击“关闭模拟器”，再检查连接或等待计划时间。","重新登录");}
 }
 static class Startup {
  const string Key=@"Software\Microsoft\Windows\CurrentVersion\Run";const string Name="FzuAttendanceAssistant";
@@ -89,6 +115,8 @@ static class Program {
   if(args.Contains("--ui-test")){Dashboard.CheckInteractions(Store.Read());return 0;}
   if(args.Contains("--self-test")){Test();return 0;}
   if(args.Contains("--android-page-test")){AndroidTests.Run();return 0;}
+  if(args.Contains("--emulator-close-probe")){AndroidClient.StopEmulator(Store.Read(),Store.Log).GetAwaiter().GetResult();File.WriteAllText(Store.FilePath("模拟器关闭检查.txt"),"所选实例已关闭，未提交签到。");return 0;}
+  if(args.Contains("--emulator-open-probe")){AndroidClient.OpenEmulatorWindow(Store.Read(),Store.Log).GetAwaiter().GetResult();if(!AndroidClient.ManualWindowVisible(Store.Read()).GetAwaiter().GetResult())throw new InvalidOperationException("所选模拟器窗口不可见。");File.WriteAllText(Store.FilePath("模拟器打开检查.txt"),"所选实例窗口已显示，可供手动操作，未提交签到。");return 0;}
   if(args.Contains("--android-ad-probe")){File.WriteAllText(Store.FilePath("广告检查.txt"),AndroidClient.AdProbe(Store.Read()).GetAwaiter().GetResult(),Encoding.UTF8);return 0;}
   if(args.Contains("--export-diagnostics")){File.WriteAllText(Store.FilePath("晚点名助手诊断.txt"),AndroidClient.Diagnostic(Store.Read()).GetAwaiter().GetResult(),Encoding.UTF8);return 0;}
   if(args.Contains("--android-probe")){var c=Store.Read();IntPtr before=AndroidClient.GetForegroundWindow();new Engine(c,null).Check(true,false,true).GetAwaiter().GetResult();File.WriteAllText(Store.FilePath("安卓检查.txt"),c.LastState+"\n前台窗口"+(before==AndroidClient.GetForegroundWindow()?"未改变":"由用户或其他程序改变")+"。本次未提交签到。");return 0;}

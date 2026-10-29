@@ -23,6 +23,13 @@ static class AndroidTests {
  }
  static void Navigation(){
   Ads();
+  var manual=new Config{Enabled=true,Time="21:05",ManualEmulator=true};var now=new DateTime(2026,10,28,22,0,0);
+  Require(!Rules.Due(manual,now,true),"手动操作期间不应自动接管模拟器");
+  manual.ManualEmulator=false;manual.EmulatorResumeAt="2026-10-29 21:05:00";
+  Require(!Rules.Due(manual,now,true)&&!Rules.Due(manual,new DateTime(2026,10,29,21,4,59),true),"手动关闭后不应立即重新启动");
+  Require(Rules.Due(manual,new DateTime(2026,10,29,21,5,0),false),"下次设定时间应恢复自动运行");
+  Require(Rules.NextPlan(manual,now)==new DateTime(2026,10,29,21,5,0)&&Rules.NextPlan(manual,now.Date.AddHours(20))==new DateTime(2026,10,28,21,5,0),"关闭后的下一次执行日期计算错误");
+  Require(Rules.NextPlan(manual,new DateTime(2026,10,28,21,5,0))==new DateTime(2026,10,29,21,5,0),"刚到计划时间关闭时不应立即重开");
   string xml="<hierarchy><node bounds='[0,0][900,1600]' package='cn.edu.fzu.fdxypa'><node text='  ' content-desc='晚点名 签到&#10;按钮' enabled='true' clickable='true' bounds='[40,500][300,700]'/><node content-desc='业务&#10;第 4 个标签，共 4 个' enabled='true' bounds='[680,1480][900,1600]'/></node></hierarchy>";
   var page=AndroidClient.ParsePage(xml);Require(AndroidNavigation.Find(page,"晚点名签到")!=null,"未处理空白文字、组合标签或继承包名");Require(AndroidNavigation.Find(page,"业务")!=null,"未识别带标签提示的业务入口");
   Require(AndroidNavigation.Find(AndroidClient.ParsePage(xml.Replace("[40,500][300,700]","[40,-400][300,-200]")),"晚点名签到")==null,"不应点击屏幕外的入口");
