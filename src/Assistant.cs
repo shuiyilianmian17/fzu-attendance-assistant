@@ -31,6 +31,7 @@ public class Config {
  public string LastState="请先在运行环境中选择 MuMu，并在签到设置中启用自动签到。";
  public string EmulatorPath="";
  public int EmulatorIndex=0;
+ public string FixedPosition="";
  public bool ClosePending=false;
  public bool ManualEmulator=false;
  public string EmulatorResumeAt="";
@@ -40,7 +41,7 @@ static class Rules {
  public static bool ValidTime(string text){TimeSpan t;return TimeSpan.TryParseExact(text,"hh\\:mm",null,out t)&&t>=TimeSpan.FromHours(21)&&t<TimeSpan.FromDays(1);}
  public static DateTime NextPlan(Config c,DateTime now){TimeSpan at;if(!TimeSpan.TryParse(c.Time,out at))at=TimeSpan.FromHours(21)+TimeSpan.FromMinutes(5);var next=now.Date+at;return next>now?next:next.AddDays(1);}
  public static bool Deferred(Config c,DateTime now){DateTime until;return DateTime.TryParseExact(c.EmulatorResumeAt,"yyyy-MM-dd HH:mm:ss",System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.None,out until)&&now<until;}
- public static bool Due(Config c,DateTime now,bool catchup){if(c.ManualEmulator||Deferred(c,now)||!c.Enabled||!InWindow(now)||c.SuccessDate==now.ToString("yyyy-MM-dd"))return false;TimeSpan at;return ValidTime(c.Time)&&TimeSpan.TryParse(c.Time,out at)&&(catchup||now.TimeOfDay>=at);}
+ public static bool Due(Config c,DateTime now,bool catchup){if(c.ManualEmulator||!c.Enabled||!InWindow(now)||c.SuccessDate==now.ToString("yyyy-MM-dd"))return false;TimeSpan at;return ValidTime(c.Time)&&TimeSpan.TryParse(c.Time,out at)&&now.TimeOfDay>=at;}
 }
 class Engine {
  public Config Config; public Action<string> Update; public bool IsBusy {get{return busy;}}
@@ -65,7 +66,7 @@ class Engine {
   catch(Exception e){State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
   finally{busy=false;}
  }
- void ManualClosed(){Config.ClosePending=false;restartRequested=false;Config.ManualEmulator=false;Config.EmulatorResumeAt=Rules.NextPlan(Config,Store.Now()).ToString("yyyy-MM-dd HH:mm:ss");State("模拟器已关闭；下次将在 "+Config.EmulatorResumeAt+" 按计划启动，手动检查可提前恢复。");}
+ void ManualClosed(){Config.ClosePending=false;restartRequested=false;Config.ManualEmulator=false;Config.EmulatorResumeAt="";retry=DateTime.MinValue;State("模拟器已关闭，自动签到已恢复；如已到设定时间且仍在签到时段，将立即补签。");}
  public async Task ObserveManualWindow(){
   if(busy||!Config.ManualEmulator)return;busy=true;
   try{if(!await AndroidClient.ManualWindowVisible(Config))ManualClosed();}
@@ -88,6 +89,7 @@ class Engine {
   catch(Exception e){State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
   finally{busy=false;if(!dry)retry=Store.Now().AddMinutes(5);}
  }
+ public void ResetRetry(){retry=DateTime.MinValue;}
  public async Task RefreshLocation(){if(busy){State("正在处理签到，稍后会自动重新发送定位。");return;}await Check(true,false,true);}
 }
 class MainForm:Form {
@@ -103,13 +105,13 @@ class MainForm:Form {
   tray=new NotifyIcon{Text="晚点名助手",Icon=this.Icon,Visible=true,ContextMenuStrip=menu};tray.DoubleClick+=delegate{Show();Activate();};
   FormClosing+=delegate(object sender,FormClosingEventArgs e){if(!quit&&e.CloseReason==CloseReason.UserClosing){e.Cancel=true;Hide();}else{tray.Visible=false;timer.Stop();showRequests.Stop();}};
   showRequests=new System.Windows.Forms.Timer{Interval=500};showRequests.Tick+=delegate{if(Program.ShowRequest.WaitOne(0)){Show();WindowState=FormWindowState.Normal;Activate();}};showRequests.Start();
-  timer=new System.Windows.Forms.Timer{Interval=15000};timer.Tick+=async delegate{if(updating)return;DateTime now=Store.Now();bool wake=lastTick!=DateTime.MinValue&&(now-lastTick).TotalSeconds>90;lastTick=now;ui.Refresh(config);await engine.ObserveManualWindow();await engine.Check(false,wake,false);};
+  timer=new System.Windows.Forms.Timer{Interval=1000};timer.Tick+=async delegate{if(updating)return;DateTime now=Store.Now();bool wake=lastTick!=DateTime.MinValue&&(now-lastTick).TotalSeconds>90;lastTick=now;ui.Refresh(config);await engine.ObserveManualWindow();await engine.Check(false,wake,false);};
   Shown+=delegate{StartService();};
  }
  protected override void SetVisibleCore(bool value){if(value&&hideInitial){hideInitial=false;if(!IsHandleCreated)CreateHandle();BeginInvoke(new Action(StartService));return;}base.SetVisibleCore(value);}
- async void StartService(){if(!initial)return;initial=false;timer.Start();lastTick=Store.Now();await engine.ObserveManualWindow();if(config.ClosePending&&!config.ManualEmulator){await engine.FinishCompletedSignIn();return;}if(config.ManualEmulator){engine.State("手动操作模式已恢复，关闭模拟器后恢复定时签到。");return;}if(Rules.Deferred(config,Store.Now())){engine.State("模拟器已关闭，下次将在 "+config.EmulatorResumeAt+" 按计划启动。");return;}if(Rules.Due(config,Store.Now(),true))await engine.Check(false,true,false);else engine.State(config.Enabled?"助手已在后台等待，每天 "+config.Time+" 启动或连接模拟器并签到。":"自动签到已暂停。");}
- void SaveSchedule(){string chosen=ui.Time;if(!Rules.ValidTime(chosen)){ui.Feedback("请选择 21:00–23:59 内的时间。",true);return;}try{Startup.Set(ui.StartupEnabled);config.Time=chosen;config.Enabled=ui.Enabled;if(Rules.Deferred(config,Store.Now()))config.EmulatorResumeAt=Rules.NextPlan(config,Store.Now()).ToString("yyyy-MM-dd HH:mm:ss");Store.Save(config);ui.Refresh(config);ui.Feedback("已保存：每天 "+chosen+"，"+(config.Enabled?"自动签到已开启。":"自动签到已暂停。"),false);}catch{ui.Feedback("保存未完成，请检查当前账户的写入权限。",true);}}
- void SaveEnvironment(){if(config.ClosePending){ui.Feedback("正在等待关闭已签到的模拟器，请先关闭模拟器，或打开手动窗口取消自动关闭后再修改。",true);return;}if(config.ManualEmulator){ui.Feedback("请先关闭模拟器，再修改运行环境。",true);return;}if(engine.IsBusy){ui.Feedback("正在检查签到状态，请等待完成后再保存运行环境。",true);return;}try{int index;if(!AndroidClient.ValidConsole(ui.EmulatorPath)||!Int32.TryParse(ui.EmulatorIndex,out index)||index<0||index>99){ui.Feedback("请选择雷电或 MuMu 控制程序，实例编号为 0–99。",true);return;}var candidate=new Config{EmulatorPath=Path.GetFullPath(ui.EmulatorPath),EmulatorIndex=index};AndroidClient.SavedPosition(candidate);config.EmulatorPath=candidate.EmulatorPath;config.EmulatorIndex=index;Store.Save(config);ui.Refresh(config);ui.Feedback("运行环境已保存，可到概览检查连接。",false);}catch(InvalidOperationException e){ui.Feedback(e.Message,true);}catch{ui.Feedback("保存未完成，请检查程序路径和实例编号。",true);}}
+ async void StartService(){if(!initial)return;initial=false;timer.Start();lastTick=Store.Now();await engine.ObserveManualWindow();if(config.ClosePending&&!config.ManualEmulator){await engine.FinishCompletedSignIn();return;}if(config.ManualEmulator){engine.State("手动操作模式已恢复，关闭模拟器后恢复定时签到。");return;}if(Rules.Due(config,Store.Now(),true))await engine.Check(false,true,false);else engine.State(config.Enabled?"助手已在后台等待，每天 "+config.Time+" 启动或连接模拟器并签到。":"自动签到已暂停。");}
+ async void SaveSchedule(){string chosen=ui.Time;if(!Rules.ValidTime(chosen)){ui.Feedback("请选择 21:00–23:59 内的时间。",true);return;}try{Startup.Set(ui.StartupEnabled);config.Time=chosen;config.Enabled=ui.Enabled;config.EmulatorResumeAt="";Store.Save(config);ui.Refresh(config);ui.Feedback("已保存：每天 "+chosen+"，"+(config.Enabled?"自动签到已开启。":"自动签到已暂停。"),false);if(Rules.Due(config,Store.Now(),false)){engine.ResetRetry();await engine.Check(false,false,false);}}catch{ui.Feedback("保存未完成，请检查当前账户的写入权限。",true);}}
+ void SaveEnvironment(){if(config.ClosePending){ui.Feedback("正在等待关闭已签到的模拟器，请先关闭模拟器，或打开手动窗口取消自动关闭后再修改。",true);return;}if(config.ManualEmulator){ui.Feedback("请先关闭模拟器，再修改运行环境。",true);return;}if(engine.IsBusy){ui.Feedback("正在检查签到状态，请等待完成后再保存运行环境。",true);return;}try{int index;if(!AndroidClient.ValidConsole(ui.EmulatorPath)||!Int32.TryParse(ui.EmulatorIndex,out index)||index<0||index>99){ui.Feedback("请选择雷电或 MuMu 控制程序，实例编号为 0–99。",true);return;}var candidate=new Config{EmulatorPath=Path.GetFullPath(ui.EmulatorPath),EmulatorIndex=index,FixedPosition=ui.FixedPosition};AndroidClient.SavedPosition(candidate);config.EmulatorPath=candidate.EmulatorPath;config.EmulatorIndex=index;config.FixedPosition=candidate.FixedPosition;Store.Save(config);ui.Refresh(config);ui.Feedback("运行环境已保存，可到概览检查连接。",false);}catch(InvalidOperationException e){ui.Feedback(e.Message,true);}catch{ui.Feedback("保存未完成，请检查程序路径和实例编号。",true);}}
  void ShowHiddenPage(){if(preview==null||preview.IsDisposed)preview=new HiddenPagePreview();if(!preview.Visible)preview.Show(this);preview.WindowState=FormWindowState.Normal;preview.Activate();}
  async void ExportDiagnostics(){using(var dialog=new System.Windows.Forms.SaveFileDialog{Title="导出诊断",Filter="诊断文本 (*.txt)|*.txt",FileName="晚点名助手诊断.txt"}){if(dialog.ShowDialog(this)!=DialogResult.OK)return;try{File.WriteAllText(dialog.FileName,await AndroidClient.Diagnostic(config),Encoding.UTF8);ui.Feedback("诊断已导出，不含账号、坐标或截图；本次未提交签到。",false);}catch{ui.Feedback("诊断导出未完成，请确认保存位置可写。",true);}}}
  async void CheckUpdate(){
@@ -156,7 +158,7 @@ static class Program {
   if(args.Contains("--lifetime-canary")){Standalone.Canary();return 0;}
   bool created;using(var mutex=new Mutex(true,@"Local\FzuAttendanceAssistant.v1",out created)){if(!created){if(!args.Contains("--background"))ShowRequest.Set();return 0;}Standalone.Record("runtime-lifetime.json");Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);Application.Run(new MainForm(args.Contains("--background")));}return 0;
  }catch(Exception e){Store.Log(args.Contains("--lifetime-canary")?e.ToString():Store.SafeError(e));return 1;}}
- static void Test(){var legacy=Store.Json.Deserialize<Config>("{\"Time\":\"22:35\",\"Enabled\":true,\"Backend\":\"android\",\"ClientPath\":\"obsolete\",\"EmulatorIndex\":2}");if(legacy.Time!="22:35"||!legacy.Enabled||legacy.EmulatorIndex!=2)throw new Exception("settings migration");var c=new Config{Enabled=true};Action<bool,string> assert=delegate(bool value,string label){if(!value)throw new Exception(label);};DateTime d=new DateTime(2026,10,28,20,59,59);assert(!Rules.Due(c,d,true),"early");assert(Rules.Due(c,d.AddSeconds(1),true),"start catchup");assert(!Rules.Due(c,d.AddSeconds(1),false),"scheduled wait");assert(Rules.Due(c,new DateTime(2026,10,28,21,5,0),false),"scheduled time");assert(Rules.Due(c,new DateTime(2026,10,28,23,59,59),true),"end");assert(!Rules.Due(c,new DateTime(2026,10,29,0,0,0),true),"midnight");c.SuccessDate="2026-10-28";assert(!Rules.Due(c,new DateTime(2026,10,28,22,0,0),true),"dedup");assert(!Rules.ValidTime("20:59")&&Rules.ValidTime("21:00")&&Rules.ValidTime("23:59")&&!Rules.ValidTime("24:00"),"validation");var limitStart=new DateTime(2026,10,28,21,0,0);assert(!Engine.LimitExpired(limitStart,limitStart.AddSeconds(59),true)&&Engine.LimitExpired(limitStart,limitStart.AddSeconds(60),true)&&!Engine.LimitExpired(limitStart,limitStart.AddSeconds(65),false),"one-minute restart policy");File.WriteAllText(Store.FilePath("逻辑测试.txt"),"通过：时段边界、设定时间、启动补签、跨日、每日去重、时间范围校验、连续限流59秒不重启及60秒触发规则。");}
+ static void Test(){var legacy=Store.Json.Deserialize<Config>("{\"Time\":\"22:35\",\"Enabled\":true,\"Backend\":\"android\",\"ClientPath\":\"obsolete\",\"EmulatorIndex\":2}");if(legacy.Time!="22:35"||!legacy.Enabled||legacy.EmulatorIndex!=2)throw new Exception("settings migration");var c=new Config{Enabled=true};Action<bool,string> assert=delegate(bool value,string label){if(!value)throw new Exception(label);};DateTime d=new DateTime(2026,10,28,20,59,59);assert(!Rules.Due(c,d,true),"early");assert(!Rules.Due(c,d.AddSeconds(1),true),"startup must wait for planned time");assert(!Rules.Due(c,d.AddSeconds(1),false),"scheduled wait");assert(Rules.Due(c,new DateTime(2026,10,28,21,5,0),false),"scheduled time");assert(Rules.Due(c,new DateTime(2026,10,28,23,59,59),true),"end");assert(!Rules.Due(c,new DateTime(2026,10,29,0,0,0),true),"midnight");c.SuccessDate="2026-10-28";assert(!Rules.Due(c,new DateTime(2026,10,28,22,0,0),true),"dedup");assert(!Rules.ValidTime("20:59")&&Rules.ValidTime("21:00")&&Rules.ValidTime("23:59")&&!Rules.ValidTime("24:00"),"validation");var limitStart=new DateTime(2026,10,28,21,0,0);assert(!Engine.LimitExpired(limitStart,limitStart.AddSeconds(59),true)&&Engine.LimitExpired(limitStart,limitStart.AddSeconds(60),true)&&!Engine.LimitExpired(limitStart,limitStart.AddSeconds(65),false),"one-minute restart policy");File.WriteAllText(Store.FilePath("逻辑测试.txt"),"通过：时段边界、设定时间、启动补签、跨日、每日去重、时间范围校验、连续限流59秒不重启及60秒触发规则。");}
 }
 }
 

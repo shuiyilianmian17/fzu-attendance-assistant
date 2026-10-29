@@ -29,10 +29,11 @@ static class AndroidTests {
 
   Require(MuMuClient.IsPath(@"D:\MuMu\mumu-cli.exe")&&!MuMuClient.IsPath(@"D:\leidian\ldconsole.exe"),"模拟器类型识别错误");
   var landscape=AndroidClient.ParsePage("<hierarchy rotation='1'><node bounds='[0,0][1920,1080]'/></hierarchy>",1080,1920);Require(landscape.Width==1920&&landscape.Height==1080,"旋转屏幕尺寸换算错误");
+  var fixedConfig=new Config{EmulatorPath=@"Z:\MuMu\mumu-cli.exe",FixedPosition="120.1,30.2"};Require(MuMuClient.Position(fixedConfig)=="120.1,30.2","固定位置不应依赖模拟器默认配置");var restoredPoint=Store.Json.Deserialize<Config>(Store.Json.Serialize(fixedConfig));Require(MuMuClient.Position(restoredPoint)=="120.1,30.2","重启后应保留固定位置");foreach(string invalid in new[]{"", "181,30", "120,91", "NaN,30", "120,Infinity", "0,0"}){bool rejected=false;try{MuMuClient.ValidatePosition(invalid);}catch(InvalidOperationException){rejected=true;}Require(rejected,"无效位置不得进入签到流程");}
   var manual=new Config{Enabled=true,Time="21:05",ManualEmulator=true};var now=new DateTime(2026,10,28,22,0,0);
   Require(!Rules.Due(manual,now,true),"手动操作期间不应自动接管模拟器");
   manual.ManualEmulator=false;manual.EmulatorResumeAt="2026-10-29 21:05:00";
-  Require(!Rules.Due(manual,now,true)&&!Rules.Due(manual,new DateTime(2026,10,29,21,4,59),true),"手动关闭后不应立即重新启动");
+  Require(Rules.Due(manual,now,true)&&!Rules.Due(manual,new DateTime(2026,10,29,21,4,59),true),"过期等待标记不得阻止补签，设定时间前不得提前签到");
   Require(Rules.Due(manual,new DateTime(2026,10,29,21,5,0),false),"下次设定时间应恢复自动运行");
   Require(Rules.NextPlan(manual,now)==new DateTime(2026,10,29,21,5,0)&&Rules.NextPlan(manual,now.Date.AddHours(20))==new DateTime(2026,10,28,21,5,0),"关闭后的下一次执行日期计算错误");
   Require(Rules.NextPlan(manual,new DateTime(2026,10,28,21,5,0))==new DateTime(2026,10,29,21,5,0),"刚到计划时间关闭时不应立即重开");

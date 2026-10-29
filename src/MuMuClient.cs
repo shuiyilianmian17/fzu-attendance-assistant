@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -12,7 +12,9 @@ static class MuMuClient {
  public static async Task<string> Run(Config c,string args){return System.Text.Encoding.UTF8.GetString(await AndroidClient.Command(c.EmulatorPath,args,20));}
  public static async Task<Dictionary<string,object>> Info(Config c){var d=Store.Json.Deserialize<Dictionary<string,object>>(await Run(c,"info"+Target(c)));object error;if(d.TryGetValue("error_code",out error)&&Convert.ToInt32(error)!=0||d.TryGetValue("errcode",out error)&&Convert.ToInt32(error)!=0)throw new InvalidOperationException("未找到所选 MuMu 实例，请核对编号。");return d;}
  public static async Task<string> Device(Config c){var d=await Info(c);object port;if(!d.TryGetValue("adb_port",out port))throw new InvalidOperationException("MuMu 尚未提供 ADB 连接，请等待实例启动。");int p=Convert.ToInt32(port);if(p<1||p>65535)throw new InvalidOperationException("MuMu ADB 端口无效。");string serial="127.0.0.1:"+p;await AndroidClient.Command(Path.Combine(Path.GetDirectoryName(c.EmulatorPath),"adb.exe"),"connect "+serial,10);return serial;}
- public static string Position(Config c){
+ public static string Position(Config c){return ValidatePosition(c.FixedPosition);}
+ public static string ValidatePosition(string value){double lon,lat;var parts=(value??"").Split(',');if(parts.Length!=2||!Double.TryParse(parts[0],NumberStyles.Float,CultureInfo.InvariantCulture,out lon)||!Double.TryParse(parts[1],NumberStyles.Float,CultureInfo.InvariantCulture,out lat)||Double.IsNaN(lon)||Double.IsNaN(lat)||Double.IsInfinity(lon)||Double.IsInfinity(lat)||lon<-180||lon>180||lat<-90||lat>90||(lon==0&&lat==0))throw new InvalidOperationException("请在运行环境中保存实际签到位置（经度、纬度）。");return lon.ToString("R",CultureInfo.InvariantCulture)+","+lat.ToString("R",CultureInfo.InvariantCulture);}
+ public static string ReadDefaultPosition(Config c){
   Target(c);string root=Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(c.EmulatorPath)),"vms");string suffix="-"+c.EmulatorIndex.ToString(CultureInfo.InvariantCulture);string selected=null;
   // Use this instance's selected/default point, never another instance or a built-in point.
   foreach(string dir in Directory.GetDirectories(root,"MuMuPlayer-*")){if(!dir.EndsWith(suffix,StringComparison.Ordinal))continue;string file=Path.Combine(dir,"configs","customer_config.json");if(!File.Exists(file))continue;if(selected==null||File.GetLastWriteTimeUtc(file)>File.GetLastWriteTimeUtc(selected))selected=file;}
