@@ -4,11 +4,11 @@ Windows 桌面辅助程序，通过雷电或 MuMu 模拟器中的安卓版智汇
 
 ## 下载安装
 
-**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.10.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
+**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.11.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
 
 升级时先从托盘退出旧版助手，再安装新版，原设置会保留。
 
-下载 `FzuAttendanceAssistant-Setup-1.0.10.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
+下载 `FzuAttendanceAssistant-Setup-1.0.11.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
 
 需要 Windows 10 1903 及以上或 Windows 11，64 位系统与 .NET Framework 4.8。现代 Windows 已包含这一运行环境。
 
@@ -81,8 +81,10 @@ powershell -ExecutionPolicy Bypass -File .\release.ps1 -IsccPath 'C:\Program Fil
 
 安装包内置发布者提供的旗山校区附近默认位置；个人修改后的设置仍保存在本机。位置改变时，请重新核对并保存；不会跟随人移动。保存签到设置、启动或恢复电脑时，若已过设定时间且仍在 21:00–23:59 内，会立即检查；正在手动操作模拟器时暂缓，关闭后恢复。失败后间隔 5 分钟重试，当天确认成功后不重复提交。
 
-从 v1.0.10 起，新安装以及未保存位置的旧配置会使用内置旗山校区默认位置。启动 MuMu、打开模拟器窗口和进入晚点名后自动发送；用户已保存的自定义位置保留。可点击“恢复旗山校区默认位置”，再保存运行环境。内置固定位置不代表设备的实时位置。
+从 v1.0.11 起，新安装以及未保存位置的旧配置会使用内置旗山校区默认位置。启动 MuMu、打开模拟器窗口和进入晚点名后自动发送；用户已保存的自定义位置保留。可点击“恢复旗山校区默认位置”，再保存运行环境。内置固定位置不代表设备的实时位置。
 
 诊断会显示实际模拟器类型、控制程序及 MuMu 实例状态；隐藏页支持滚轮和上下拖动。
 
 用户操作优先：检查更新、检查连接、重启应用、重新定位及模拟器开关会中断当前后台流程。检查更新立即联网，不要求先等待签到结束；已经确认的签到记录保留。
+
+每次签到在保存的位置中心5米内生成本次临时位置，同一次流程保持一致。先等待模拟器就绪，重新发送定位并确认控制命令成功，再启动智汇福大；进入晚点名后继续刷新。临时位置不覆盖保存的中心点。

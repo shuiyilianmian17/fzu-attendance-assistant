@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -33,6 +33,7 @@ public class Config {
  public int EmulatorIndex=0;
  public const string DefaultPosition="119.195,26.0602";
  public string FixedPosition=DefaultPosition;
+ [System.Web.Script.Serialization.ScriptIgnore] public string SessionPosition;
  public void ApplyDefaults(){if(String.IsNullOrWhiteSpace(FixedPosition))FixedPosition=DefaultPosition;}
  public bool ClosePending=false;
  public bool ManualEmulator=false;
@@ -60,7 +61,7 @@ class Engine {
  public async Task OpenEmulator(){
   if(busy){State("正在处理签到或模拟器操作，请稍后再打开窗口。");return;}
   busy=true;active=Operation.Start();Config.ClosePending=false;Config.ManualEmulator=true;Config.EmulatorResumeAt="";Store.Save(Config);
-  try{await AndroidClient.OpenEmulatorWindow(Config,State);await AndroidClient.RefreshPosition(Config);State("模拟器窗口已打开，并已发送保存的签到位置；可手动登录或操作，关闭模拟器后恢复定时。");}
+  try{await AndroidClient.OpenEmulatorWindow(Config,State);AndroidClient.PreparePosition(Config);await AndroidClient.RefreshPosition(Config);State("模拟器窗口已打开，并已发送保存的签到位置；可手动登录或操作，关闭模拟器后恢复定时。");}
   catch(OperationCanceledException){Store.Save(Config);}
   catch(Exception e){Config.ManualEmulator=false;State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
   finally{busy=false;active=null;}
