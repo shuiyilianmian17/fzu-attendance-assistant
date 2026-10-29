@@ -142,15 +142,15 @@ static class AndroidClient {
   if(launcher==null){resolved=await Shell(c,"cmd package resolve-activity --brief "+Package);launcher=AndroidNavigation.Launcher(resolved);}
   if(launcher==null){lastLauncher="已安装，但未解析到可启动的应用入口";throw new InvalidOperationException("智汇福大已安装，但没有找到可启动入口，请导出诊断。");}
   lastLauncher=launcher;
-  string result=await Shell(c,"am start -W -n '"+launcher+"'");
+  string result=await Shell(c,"am start -n '"+launcher+"'");
   if(AndroidNavigation.LaunchFailed(result)){lastLauncher+="；安卓报告启动失败";throw new InvalidOperationException("Android 未能启动智汇福大，请导出诊断核对启动状态。");}
  }
  static async Task<AndroidPage> OpenAttendance(Config c,bool restart,Action<string> state){
   if(restart){state("正在重新打开模拟器内的智汇福大…");await CloseApp(c);}
-  await LaunchApp(c);await Operation.Delay(1500);
+  state("正在发送智汇福大启动命令…");await LaunchApp(c);state("应用启动命令已返回，正在读取首页并查找晚点名入口…");await Operation.Delay(1500);
   bool serviceTapped=false,relaunched=false;DateTime began=DateTime.UtcNow;AndroidPage last=null;
   for(int i=0;i<30&&DateTime.UtcNow-began<TimeSpan.FromSeconds(90);i++){
-   var page=await Read(c);last=page;lastNavigation=AndroidNavigation.Summary(page);
+   if(i%4==0)state("正在读取智汇福大页面并识别晚点名入口（第 "+(i+1)+" 次）…");var page=await Read(c);last=page;lastNavigation=AndroidNavigation.Summary(page);
    if(await DismissAd(c,page,state)){serviceTapped=false;await LaunchApp(c);await Operation.Delay(1200);continue;}
    if(page.Attendance){if(!String.IsNullOrEmpty(page.Date)&&page.Date!=Store.Now().ToString("yyyy-MM-dd")){await Shell(c,"input keyevent 4");await Operation.Delay(700);continue;}return page;}
    string hint=AndroidNavigation.Hint(page);
