@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -19,7 +19,7 @@ static class EmulatorHost {
  public static bool StartMuMu(Config config){
   if(desktop==IntPtr.Zero)desktop=CreateDesktop("FzuAttendanceAndroid",IntPtr.Zero,IntPtr.Zero,0,0x01FF,IntPtr.Zero);
   if(desktop==IntPtr.Zero)return false;
-  var startup=new StartupInfo{size=Marshal.SizeOf(typeof(StartupInfo)),desktop=@"winsta0\FzuAttendanceAndroid",flags=1,show=0};ProcessInfo info;
+  var startup=new StartupInfo{size=Marshal.SizeOf(typeof(StartupInfo)),desktop=@"winsta0\default",flags=1,show=0};ProcessInfo info;
   string args="\""+config.EmulatorPath+"\" control -v "+config.EmulatorIndex.ToString(System.Globalization.CultureInfo.InvariantCulture)+" launch";
   if(!CreateProcess(config.EmulatorPath,new StringBuilder(args),IntPtr.Zero,IntPtr.Zero,false,0x08000000,IntPtr.Zero,Path.GetDirectoryName(config.EmulatorPath),ref startup,out info))return false;
   CloseHandle(info.thread);CloseHandle(info.process);return true;

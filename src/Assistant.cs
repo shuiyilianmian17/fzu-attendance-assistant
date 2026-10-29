@@ -56,6 +56,7 @@ class Engine {
  internal Func<Config,Action<string>,Task> EmulatorStop=AndroidClient.StopEmulator;
  public Engine(Config c,Action<string> update){Config=c;Update=update;}
  public void State(string text){Config.LastState=text;Store.Save(Config);Store.Log(text);if(Update!=null)Update(text);}
+ public static bool LocationExpired(DateTime? since,DateTime now){return since.HasValue&&(now-since.Value).TotalSeconds>=30;}
  public static bool LimitExpired(DateTime? since,DateTime now,bool limited){return limited&&since.HasValue&&(now-since.Value).TotalSeconds>=60;}
  public async Task RestartClient(){if(Config.ManualEmulator){State("当前为手动操作模式，请先关闭模拟器，再重启安卓应用。");return;}restartRequested=true;if(busy){State("已请求重新打开智汇福大，正在结束本次检查…");return;}await Check(true,true,true);}
  public async Task OpenEmulator(){
@@ -94,10 +95,10 @@ class Engine {
   if(busy)return;if(force)Config.ManualEmulator=false;if(Config.ManualEmulator)return;
   if(Config.ClosePending){await FinishCompletedSignIn();return;}
   if(force){Config.EmulatorResumeAt="";Store.Save(Config);}if(!restartRequested&&!dry&&!force&&(!Rules.Due(Config,Store.Now(),catchup)||Store.Now()<retry))return;
-  busy=true;active=Operation.Start();try{bool confirmed=await AndroidCheck(Config,dry,force,()=>restartRequested,()=>restartRequested=false,State);if(confirmed){Config.ClosePending=true;Store.Save(Config);await CloseConfirmedCore();}}
+  busy=true;active=Operation.Start();try{try{bool confirmed=await AndroidCheck(Config,dry,force,()=>restartRequested,()=>restartRequested=false,State);if(confirmed){Config.ClosePending=true;Store.Save(Config);await CloseConfirmedCore();}}
   catch(OperationCanceledException){Store.Save(Config);}
   catch(Exception e){State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
-  finally{busy=false;active=null;if(!dry)retry=Store.Now().AddMinutes(5);}
+  if(active!=null&&!active.IsCancellationRequested&&AndroidClient.ValidConsole(Config.EmulatorPath)){try{await AndroidClient.ReleaseWindow(Config);}catch{}}}finally{busy=false;active=null;if(!dry)retry=Store.Now().AddMinutes(5);}
  }
  public async Task PreviewSwipe(Point a,Point b,Size size){await Interrupt();busy=true;active=Operation.Start();try{await AndroidClient.PreviewSwipe(Config,a,b,size);}finally{busy=false;active=null;}}
  public void ResetRetry(){retry=DateTime.MinValue;}

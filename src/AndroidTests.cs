@@ -22,7 +22,7 @@ static class AndroidTests {
   var size=AndroidNavigation.DisplaySize("Physical size: 1920x1080\nOverride size: 1600x900\n");Require(size[0]==1600&&size[1]==900,"应使用实际覆盖分辨率");
  }
  static void Navigation(){
-  Ads();
+  Ads();var begin=new DateTime(2026,10,30,21,0,0);Require(!Engine.LocationExpired(begin,begin.AddSeconds(29))&&Engine.LocationExpired(begin,begin.AddSeconds(30)),"定位30秒边界错误");foreach(var dimensions in new[]{new[]{1280,720},new[]{1920,1080},new[]{2560,1440},new[]{720,1280},new[]{1080,1920}}){var screenXml="<hierarchy rotation='1'><node bounds='[0,0][1280,720]'/></hierarchy>";var screen=AndroidClient.ParsePage(screenXml,dimensions[0],dimensions[1],true);Require(screen.Width==dimensions[0]&&screen.Height==dimensions[1],"实际截图尺寸不得重复旋转");}
   string detectionRoot=Path.Combine(Store.DataDir,"discovery-fixture");string mumu=Path.Combine(detectionRoot,"Custom Apps","MuMu","nx_main"),ld=Path.Combine(detectionRoot,"OtherDisk","LD");Directory.CreateDirectory(mumu);Directory.CreateDirectory(ld);
   string muExe=Path.Combine(mumu,"mumu-cli.exe"),ldExe=Path.Combine(ld,"ldconsole.exe");if(File.Exists(Path.Combine(mumu,"adb.exe")))File.Delete(Path.Combine(mumu,"adb.exe"));File.WriteAllText(muExe,"");File.WriteAllText(ldExe,"");File.WriteAllText(Path.Combine(ld,"adb.exe"),"");
   Require(EmulatorDiscovery.Choose(new[]{muExe,ldExe})==ldExe,"缺少 ADB 的安装目录不应被采用");File.WriteAllText(Path.Combine(mumu,"adb.exe"),"");Require(EmulatorDiscovery.Choose(new[]{ldExe,muExe})==muExe,"自定义安装目录中的 MuMu 应优先于雷电");Require(EmulatorDiscovery.FromHints(new[]{Path.GetDirectoryName(mumu)})==muExe,"安装记录根目录应定位到 nx_main 控制程序");Require(EmulatorDiscovery.FromHints(new[]{"\""+Path.Combine(mumu,"MuMuNxMain.exe")+"\",0"})==muExe,"带引号图标路径应识别 MuMu 控制程序");
