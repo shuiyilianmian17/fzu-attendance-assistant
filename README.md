@@ -1,14 +1,14 @@
 # 智汇福大晚点名自动签到
 
-Windows 桌面辅助程序，仅通过雷电模拟器中的安卓版智汇福大完成晚点名操作。支持设定时间、启动补签、自动进入页面、重新发送定位和确认签到结果。
+Windows 桌面辅助程序，通过雷电或 MuMu 模拟器中的安卓版智汇福大完成晚点名操作。支持设定时间、启动补签、自动进入页面、重新发送定位和确认签到结果。
 
 ## 下载安装
 
-**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.3.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
+**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.4.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
 
 升级时先从托盘退出旧版助手，再安装新版，原设置会保留。
 
-下载 `FzuAttendanceAssistant-Setup-1.0.3.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
+下载 `FzuAttendanceAssistant-Setup-1.0.4.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
 
 需要 Windows 10 1903 及以上或 Windows 11，64 位系统与 .NET Framework 4.8。现代 Windows 已包含这一运行环境。
 
@@ -64,3 +64,7 @@ powershell -ExecutionPolicy Bypass -File .\release.ps1 -IsccPath 'C:\Program Fil
 发布脚本先运行时间规则、安卓页面状态与界面交互检查，再生成安装版、便携版和 SHA-256 校验文件。发布内容使用明确的文件清单，不从运行目录整体打包。
 
 发布包尚未进行商业代码签名，Windows 可能显示发布者未验证的提示。
+
+## MuMu 配置
+
+选择 MuMu 安装目录 `nx_main` 中的 `mumu-cli.exe`（也兼容 `MuMuManager.exe`），实例编号与多开器一致。在 MuMu 中安装并登录智汇福大，加入晚点名入口，并在定位工具中将实际位置保存为默认定位。助手每次进入晚点名后会重新发送该位置，等待期间重复刷新。已在 MuMu Android 15 上验证后台连接、入口导航和重新定位，当前非签到时段，尚未验证 MuMu 实际提交成功。

@@ -38,9 +38,9 @@
      <Border Background="#E9F0FA" CornerRadius="14" Padding="20"><StackPanel><TextBlock Text="错过时间，也会尝试补签" FontWeight="SemiBold"/><TextBlock Text="如果启动或从睡眠中恢复时仍在签到时段，助手会立即检查并尝试补签。只有页面确认成功，才会记录为已签到。" Foreground="#667F9D" FontSize="12" LineHeight="22" Margin="0,8,0,0"/></StackPanel></Border>
     </StackPanel></ScrollViewer>
     <ScrollViewer x:Name="EnvironmentPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"><StackPanel>
-     <Border Style="{StaticResource Card}" Margin="0,0,0,18"><StackPanel><DockPanel><TextBlock Text="雷电模拟器" Style="{StaticResource Section}"/><TextBlock x:Name="EnvironmentStatus" DockPanel.Dock="Right" HorizontalAlignment="Right" Foreground="#247C68" FontSize="12"/></DockPanel>
-      <TextBlock Text="助手通过雷电中的安卓版智汇福大完成签到。" Style="{StaticResource Muted}" Margin="0,0,0,20"/>
-      <TextBlock Text="雷电控制程序" FontWeight="SemiBold" Margin="0,0,0,10"/><TextBox x:Name="EmulatorPath" MinHeight="44" FontSize="12"/><StackPanel Orientation="Horizontal" Margin="0,12,0,0"><Button x:Name="BrowseEmulator" Content="选择雷电" Margin="0,0,12,0"/><Button x:Name="DetectEmulator" Content="自动查找"/></StackPanel>
+     <Border Style="{StaticResource Card}" Margin="0,0,0,18"><StackPanel><DockPanel><TextBlock Text="雷电 / MuMu 模拟器" Style="{StaticResource Section}"/><TextBlock x:Name="EnvironmentStatus" DockPanel.Dock="Right" HorizontalAlignment="Right" Foreground="#247C68" FontSize="12"/></DockPanel>
+      <TextBlock Text="支持雷电与 MuMu。选择对应控制程序，签到时自动重新发送保存的位置。" Style="{StaticResource Muted}" Margin="0,0,0,20"/>
+      <TextBlock Text="模拟器控制程序" FontWeight="SemiBold" Margin="0,0,0,10"/><TextBox x:Name="EmulatorPath" MinHeight="44" FontSize="12"/><StackPanel Orientation="Horizontal" Margin="0,12,0,0"><Button x:Name="BrowseEmulator" Content="选择模拟器" Margin="0,0,12,0"/><Button x:Name="DetectEmulator" Content="自动查找"/></StackPanel>
       <DockPanel Margin="0,20,0,0"><TextBlock Text="模拟器编号" VerticalAlignment="Center"/><TextBox x:Name="EmulatorIndex" Width="72" HorizontalAlignment="Left" Margin="20,0,0,0"/></DockPanel>
       <TextBlock Text="编号与雷电多开器对应，第一个通常为 0。进入晚点名后，会自动重新发送该实例中已选的位置。" Style="{StaticResource Muted}" LineHeight="22" Margin="0,12,0,0"/>
       <Button x:Name="SaveEnvironment" Content="保存运行环境" Style="{StaticResource Primary}" HorizontalAlignment="Left" Margin="0,22,0,0"/></StackPanel></Border>

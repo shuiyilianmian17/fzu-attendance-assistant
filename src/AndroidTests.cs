@@ -23,6 +23,8 @@ static class AndroidTests {
  }
  static void Navigation(){
   Ads();
+  Require(MuMuClient.IsPath(@"D:\MuMu\mumu-cli.exe")&&!MuMuClient.IsPath(@"D:\leidian\ldconsole.exe"),"模拟器类型识别错误");
+  var landscape=AndroidClient.ParsePage("<hierarchy rotation='1'><node bounds='[0,0][1920,1080]'/></hierarchy>",1080,1920);Require(landscape.Width==1920&&landscape.Height==1080,"旋转屏幕尺寸换算错误");
   var manual=new Config{Enabled=true,Time="21:05",ManualEmulator=true};var now=new DateTime(2026,10,28,22,0,0);
   Require(!Rules.Due(manual,now,true),"手动操作期间不应自动接管模拟器");
   manual.ManualEmulator=false;manual.EmulatorResumeAt="2026-10-29 21:05:00";

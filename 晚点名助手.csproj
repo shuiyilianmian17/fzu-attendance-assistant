@@ -17,7 +17,7 @@
     <Reference Include="System.Xml" /><Reference Include="System.Xaml" /><Reference Include="PresentationFramework" /><Reference Include="PresentationCore" /><Reference Include="WindowsBase" /><Reference Include="WindowsFormsIntegration" />
     <Compile Include="src\AssemblyInfo.cs" /><Compile Include="src\Assistant.cs" /><Compile Include="src\EmulatorHost.cs" />
     <Compile Include="src\Dashboard.cs" />
-    <Compile Include="src\AndroidClient.cs" /><Compile Include="src\AndroidTests.cs" /><Compile Include="src\Standalone.cs" /><Compile Include="src\HiddenPagePreview.cs" />
+    <Compile Include="src\AndroidClient.cs" /><Compile Include="src\MuMuClient.cs" /><Compile Include="src\AndroidTests.cs" /><Compile Include="src\Standalone.cs" /><Compile Include="src\HiddenPagePreview.cs" />
     <EmbeddedResource Include="src\Ui.xaml"><LogicalName>FzuAttendance.Ui.xaml</LogicalName></EmbeddedResource>
     <None Include="assets\app.ico" /><None Include="assets\app.png" /><None Include="assets\app.svg" />
   </ItemGroup>
