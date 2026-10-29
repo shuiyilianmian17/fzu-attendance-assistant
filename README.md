@@ -4,11 +4,11 @@ Windows 桌面辅助程序，通过雷电或 MuMu 模拟器中的安卓版智汇
 
 ## 下载安装
 
-**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.4.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
+**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.5.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
 
 升级时先从托盘退出旧版助手，再安装新版，原设置会保留。
 
-下载 `FzuAttendanceAssistant-Setup-1.0.4.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
+下载 `FzuAttendanceAssistant-Setup-1.0.5.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
 
 需要 Windows 10 1903 及以上或 Windows 11，64 位系统与 .NET Framework 4.8。现代 Windows 已包含这一运行环境。
 
@@ -16,10 +16,10 @@ Windows 桌面辅助程序，通过雷电或 MuMu 模拟器中的安卓版智汇
 
 ## 首次配置
 
-1. 从[雷电官网](https://www.ldmnq.com/)安装雷电 14，在模拟器中安装并登录学校官方提供的安卓版智汇福大。
+1. 安装 MuMu 模拟器（也兼容雷电），在模拟器中安装并登录学校官方提供的安卓版智汇福大。
 2. 将“晚点名签到”加入智汇福大的“我的服务”。
-3. 在雷电右侧“定位”中确认当前位置。助手会沿用此实例已选的位置，每次进入晚点名后重新发送定位。
-4. 打开助手的“运行环境”，自动查找或选择雷电安装目录中的 `ldconsole.exe`，填写对应实例编号，第一个实例通常为 `0`。
+3. 在 MuMu 定位工具中确认实际位置并保存默认定位。助手每次进入晚点名后重新发送该位置。
+4. 打开助手的“运行环境”，自动查找 MuMu，或选择其 `nx_main` 目录中的 `mumu-cli.exe`（雷电选择 `ldconsole.exe`），填写对应实例编号，第一个实例通常为 `0`。
 5. 点“检查连接”验证页面和定位；在“签到设置”选择 `21:00–23:59` 内的时间，启用自动签到并保存。
 
 新安装默认暂停自动签到，完成上述配置后再开启。v1.0.1 已移除 Windows 版智汇福大的旧模式和相关按钮。平时只运行托盘助手，到了时间才启动或连接模拟器。关闭设置窗口不会退出助手，从托盘菜单可以退出。
@@ -68,3 +68,9 @@ powershell -ExecutionPolicy Bypass -File .\release.ps1 -IsccPath 'C:\Program Fil
 ## MuMu 配置
 
 选择 MuMu 安装目录 `nx_main` 中的 `mumu-cli.exe`（也兼容 `MuMuManager.exe`），实例编号与多开器一致。在 MuMu 中安装并登录智汇福大，加入晚点名入口，并在定位工具中将实际位置保存为默认定位。助手每次进入晚点名后会重新发送该位置，等待期间重复刷新。已在 MuMu Android 15 上验证后台连接、入口导航和重新定位，当前非签到时段，尚未验证 MuMu 实际提交成功。
+
+## 自动查找与软件更新
+
+自动查找优先识别 MuMu，检查运行进程、当前用户和系统安装记录、应用路径、快捷方式，以及各固定磁盘的常见安装目录；也兼容雷电。找到后保存运行环境即可。无法识别的自定义安装仍可手动选择控制程序。
+
+在签到概览或托盘菜单点击“检查更新”。确认新版后自动从本仓库下载安装包，验证 SHA-256，再覆盖更新并在托盘重新运行。保留现有时间、模拟器路径和自启选择；便携版更新保留原数据目录。网络或校验失败不会启动安装。GitHub 公共接口限流时使用官方发布页和校验文件回退。旧版本需要手动安装 v1.0.5 一次，以后可在软件内更新。

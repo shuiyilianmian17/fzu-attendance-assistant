@@ -49,7 +49,8 @@ static class AndroidClient {
  static readonly SemaphoreSlim DeviceGate=new SemaphoreSlim(1,1);
  static string lastNavigation="尚未执行导航",lastLauncher="尚未解析启动入口";
  public static bool ValidConsole(string path){return !String.IsNullOrWhiteSpace(path)&&File.Exists(path)&&(String.Equals(Path.GetFileName(path),"ldconsole.exe",StringComparison.OrdinalIgnoreCase)||MuMuClient.IsPath(path))&&File.Exists(Path.Combine(Path.GetDirectoryName(path),"adb.exe"));}
- public static string Detect(string current){var paths=new List<string>{current,@"D:\Program Files\Netease\MuMu\nx_main\mumu-cli.exe",@"D:\leidian\LDPlayer14\ldconsole.exe",@"C:\leidian\LDPlayer14\ldconsole.exe",@"D:\leidian\LDPlayer9\ldconsole.exe",@"C:\leidian\LDPlayer9\ldconsole.exe"};foreach(string key in new[]{@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"}){try{using(var root=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(key)){if(root==null)continue;foreach(var name in root.GetSubKeyNames())using(var child=root.OpenSubKey(name)){if(child==null||!Regex.IsMatch(Convert.ToString(child.GetValue("DisplayName")),"雷电|LDPlayer",RegexOptions.IgnoreCase))continue;string icon=Convert.ToString(child.GetValue("DisplayIcon")).Split(',')[0].Trim('"');if(!String.IsNullOrEmpty(icon))paths.Add(Path.Combine(Path.GetDirectoryName(icon),"ldconsole.exe"));}}}catch{}}return paths.FirstOrDefault(ValidConsole);}
+ public static string Detect(string current){return EmulatorDiscovery.Detect(current);}
+
  static string AdbPath(Config c){return Path.Combine(Path.GetDirectoryName(c.EmulatorPath),"adb.exe");}
  static string Device(Config c){return "emulator-"+(5554+c.EmulatorIndex*2).ToString(CultureInfo.InvariantCulture);}
  static string Index(Config c){if(c.EmulatorIndex<0||c.EmulatorIndex>99)throw new InvalidOperationException("模拟器编号应为 0–99。");return c.EmulatorIndex.ToString(CultureInfo.InvariantCulture);}

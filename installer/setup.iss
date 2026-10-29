@@ -1,5 +1,5 @@
 ﻿#ifndef AppVersion
-  #define AppVersion "1.0.4"
+  #define AppVersion "1.0.5"
 #endif
 #ifndef PayloadDir
   #define PayloadDir "..\dist\portable"
@@ -67,13 +67,15 @@ Source: "{#PayloadDir}\assets\app.ico"; DestDir: "{app}\assets"; Flags: ignoreve
 Source: "{#PayloadDir}\assets\app.png"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "{#PayloadDir}\assets\app.svg"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "{#PayloadDir}\使用说明.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "installed.flag"; DestDir: "{app}"; Flags: ignoreversion
+Source: "installed.flag"; DestDir: "{app}"; Flags: ignoreversion; Check: not FileExists(ExpandConstant('{app}\settings.json'))
+#ifndef IsolatedTest
 [Icons]
 Name: "{group}\晚点名助手"; Filename: "{app}\晚点名助手.exe"; IconFilename: "{app}\assets\app.ico"
 Name: "{group}\卸载晚点名助手"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\晚点名助手"; Filename: "{app}\晚点名助手.exe"; IconFilename: "{app}\assets\app.ico"; Tasks: desktopicon
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "FzuAttendanceAssistant"; ValueData: """{app}\晚点名助手.exe"" --background"; Tasks: startup
+#endif
 [Run]
 Filename: "{app}\晚点名助手.exe"; Description: "打开晚点名助手进行首次配置"; Flags: postinstall nowait skipifsilent
 [Code]

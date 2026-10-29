@@ -23,6 +23,10 @@ static class AndroidTests {
  }
  static void Navigation(){
   Ads();
+  string detectionRoot=Path.Combine(Store.DataDir,"discovery-fixture");string mumu=Path.Combine(detectionRoot,"Custom Apps","MuMu","nx_main"),ld=Path.Combine(detectionRoot,"OtherDisk","LD");Directory.CreateDirectory(mumu);Directory.CreateDirectory(ld);
+  string muExe=Path.Combine(mumu,"mumu-cli.exe"),ldExe=Path.Combine(ld,"ldconsole.exe");if(File.Exists(Path.Combine(mumu,"adb.exe")))File.Delete(Path.Combine(mumu,"adb.exe"));File.WriteAllText(muExe,"");File.WriteAllText(ldExe,"");File.WriteAllText(Path.Combine(ld,"adb.exe"),"");
+  Require(EmulatorDiscovery.Choose(new[]{muExe,ldExe})==ldExe,"缺少 ADB 的安装目录不应被采用");File.WriteAllText(Path.Combine(mumu,"adb.exe"),"");Require(EmulatorDiscovery.Choose(new[]{ldExe,muExe})==muExe,"自定义安装目录中的 MuMu 应优先于雷电");Require(EmulatorDiscovery.FromHints(new[]{Path.GetDirectoryName(mumu)})==muExe,"安装记录根目录应定位到 nx_main 控制程序");Require(EmulatorDiscovery.FromHints(new[]{"\""+Path.Combine(mumu,"MuMuNxMain.exe")+"\",0"})==muExe,"带引号图标路径应识别 MuMu 控制程序");
+
   Require(MuMuClient.IsPath(@"D:\MuMu\mumu-cli.exe")&&!MuMuClient.IsPath(@"D:\leidian\ldconsole.exe"),"模拟器类型识别错误");
   var landscape=AndroidClient.ParsePage("<hierarchy rotation='1'><node bounds='[0,0][1920,1080]'/></hierarchy>",1080,1920);Require(landscape.Width==1920&&landscape.Height==1080,"旋转屏幕尺寸换算错误");
   var manual=new Config{Enabled=true,Time="21:05",ManualEmulator=true};var now=new DateTime(2026,10,28,22,0,0);
