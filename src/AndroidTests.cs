@@ -5,7 +5,24 @@ namespace FzuAttendance {
 static class AndroidTests {
  static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
  static string Fixture(string date,string status,string button,string reason){return "<hierarchy><node bounds='[0,0][1600,900]' package='cn.edu.fzu.fdxypa'><node content-desc='晚点名签到' bounds='[700,36][900,102]' package='cn.edu.fzu.fdxypa'/><node bounds='[0,102][1600,900]'><node class='android.webkit.WebView' bounds='[0,88][1387,780]' package='cn.edu.fzu.fdxypa'><node class='android.webkit.WebView' bounds='[0,88][1387,780]' package='cn.edu.fzu.fdxypa'><node text='"+date+" 星期三' package='cn.edu.fzu.fdxypa' bounds='[620,270][790,300]'/><node text='"+status+"' package='cn.edu.fzu.fdxypa'/><node text='"+button+"' package='cn.edu.fzu.fdxypa' enabled='true' bounds='[633,640][754,677]'/><node text='"+reason+"' package='cn.edu.fzu.fdxypa'/></node></node></node></node></hierarchy>";}
+ static void Ads(){
+  // Real emulator ad structure: an inset window, blank labels and explicit close IDs.
+  string xml="<hierarchy><node package='com.android.flysilkworm' bounds='[465,133][1135,803]'><node resource-id='com.android.flysilkworm:id/banner' bounds='[485,153][1115,783]'/><node resource-id='com.android.flysilkworm:id/fl_close' clickable='true' enabled='true' bounds='[1039,133][1135,229]'><node resource-id='com.android.flysilkworm:id/iv_close' clickable='true' enabled='true' bounds='[1063,157][1111,205]'/></node></node></hierarchy>";
+  var ad=AndroidClient.ParsePage(xml,1600,900);var close=AndroidNavigation.AdClose(ad);
+  Require(ad.Width==1600&&ad.Height==900,"不应把广告弹窗大小当成屏幕大小");
+  Require(AndroidNavigation.HasEmulatorAd(ad)&&close!=null&&close.X==1087&&close.Y==181,"未识别实机无文字关闭控件或真实屏幕坐标");
+  Require(AndroidNavigation.Hint(ad).Contains("广告遮挡"),"广告不应被报为晚点名入口缺失");
+  Require(AndroidNavigation.AdClose(AndroidClient.ParsePage(xml.Replace("com.android.flysilkworm","other.app"),1600,900))==null,"其他应用同名控件不应点击");
+  Require(AndroidNavigation.AdClose(AndroidClient.ParsePage(xml.Replace("enabled='true'","enabled='false'"),1600,900))==null,"禁用关闭控件不应点击");
+  Require(AndroidNavigation.AdClose(AndroidClient.ParsePage(xml.Replace("id/fl_close","id/download").Replace("id/iv_close","id/unknown"),1600,900))==null,"不应将下载或未知控件作为关闭按钮");
+  Require(AndroidNavigation.AdClose(AndroidClient.ParsePage(xml,800,450))==null,"关闭按钮越界时不应点击");
+  var noClose=AndroidClient.ParsePage(xml.Replace("id/fl_close","id/download").Replace("id/iv_close","id/unknown"),1600,900);Require(AndroidNavigation.HasEmulatorAd(noClose),"无关闭按钮的广告也应阻止导航");
+  string ready=Fixture("2026-10-28","未签到","点击签到","");string covered=ready.Replace("</hierarchy>",xml.Replace("<hierarchy>","").Replace("</hierarchy>","")+"</hierarchy>");
+  Require(!AndroidClient.ParsePage(covered,1600,900).CanSubmit(new DateTime(2026,10,28,22,0,0)),"广告覆盖签到页时不应提交");
+  var size=AndroidNavigation.DisplaySize("Physical size: 1920x1080\nOverride size: 1600x900\n");Require(size[0]==1600&&size[1]==900,"应使用实际覆盖分辨率");
+ }
  static void Navigation(){
+  Ads();
   string xml="<hierarchy><node bounds='[0,0][900,1600]' package='cn.edu.fzu.fdxypa'><node text='  ' content-desc='晚点名 签到&#10;按钮' enabled='true' clickable='true' bounds='[40,500][300,700]'/><node content-desc='业务&#10;第 4 个标签，共 4 个' enabled='true' bounds='[680,1480][900,1600]'/></node></hierarchy>";
   var page=AndroidClient.ParsePage(xml);Require(AndroidNavigation.Find(page,"晚点名签到")!=null,"未处理空白文字、组合标签或继承包名");Require(AndroidNavigation.Find(page,"业务")!=null,"未识别带标签提示的业务入口");
   Require(AndroidNavigation.Find(AndroidClient.ParsePage(xml.Replace("[40,500][300,700]","[40,-400][300,-200]")),"晚点名签到")==null,"不应点击屏幕外的入口");

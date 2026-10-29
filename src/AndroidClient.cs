@@ -13,7 +13,7 @@ using System.Xml;
 
 namespace FzuAttendance {
 sealed class AndroidNode {
- public string Text,Description,Package; public bool Web,Enabled,Clickable; public int Left,Top,Right,Bottom; public double ScaleX=1,ScaleY=1,OffsetX,OffsetY;
+ public string Text,Description,Package,ResourceId; public bool Web,Enabled,Clickable; public int Left,Top,Right,Bottom; public double ScaleX=1,ScaleY=1,OffsetX,OffsetY;
  public string Label {get{return String.IsNullOrWhiteSpace(Text)?Description:Text;}}
  public int X {get{return (int)Math.Round((Left+Right)*0.5*ScaleX+OffsetX);}}
  public int Y {get{return (int)Math.Round((Top+Bottom)*0.5*ScaleY+OffsetY);}}
@@ -22,7 +22,7 @@ sealed class AndroidPage {
  public List<AndroidNode> Nodes=new List<AndroidNode>(); public int Width,Height;
  public string Text {get{return String.Join("\n",Nodes.Where(n=>n.Web).Select(n=>n.Label));}}
  public string Date {get{return Regex.Match(Text,@"\b20\d{2}-\d{2}-\d{2}\b").Value;}}
- public bool Attendance {get{return Nodes.Any(n=>!n.Web&&n.Package==AndroidClient.Package&&!n.Clickable&&n.Top<Height/5&&AndroidNavigation.Matches(n,"晚点名签到"))&&Nodes.Any(n=>n.Web);}}
+ public bool Attendance {get{return !AndroidNavigation.HasEmulatorAd(this)&&Nodes.Any(n=>!n.Web&&n.Package==AndroidClient.Package&&!n.Clickable&&n.Top<Height/5&&AndroidNavigation.Matches(n,"晚点名签到"))&&Nodes.Any(n=>n.Web);}}
  public bool Confirmed {get{return Attendance&&Nodes.Any(n=>n.Web&&(n.Label.Trim()=="已签到"||n.Label.Trim()=="签到成功"));}}
  public bool Locating {get{return Text.Contains("定位中");}}
  public bool Limited {get{return Text.Contains("定位服务流量限制");}}
@@ -32,13 +32,17 @@ sealed class AndroidPage {
  public string Reason {get{foreach(string message in new[]{"不在签到范围内","未到签到时间","定位失败","请开启定位","无法调用","定位服务流量限制"})if(Text.Contains(message))return message;return Locating?"定位中":Ready!=null?"可签到":Confirmed?"已签到":"页面尚未准备好";}}
 }
 static class AndroidNavigation {
+ internal const string AdPackage="com.android.flysilkworm";
+ public static bool HasEmulatorAd(AndroidPage page){return page.Nodes.Any(n=>n.Package==AdPackage);}
+ public static AndroidNode AdClose(AndroidPage page){return page.Nodes.FirstOrDefault(n=>n.Package==AdPackage&&(n.ResourceId==AdPackage+":id/fl_close"||n.ResourceId==AdPackage+":id/iv_close")&&n.Enabled&&n.Clickable&&!n.Web&&n.Left>=0&&n.Top>=0&&n.Right<=page.Width&&n.Bottom<=page.Height&&n.Right>n.Left&&n.Bottom>n.Top);}
+ public static int[] DisplaySize(string output){var sizes=Regex.Matches(output??"",@"(?:Physical|Override) size:\s*(\d+)x(\d+)");if(sizes.Count==0)throw new InvalidOperationException("未能读取安卓屏幕尺寸，请导出诊断。");var last=sizes[sizes.Count-1];int w=Int32.Parse(last.Groups[1].Value),h=Int32.Parse(last.Groups[2].Value);if(w<=0||h<=0)throw new InvalidOperationException("安卓屏幕尺寸无效。");return new[]{w,h};}
  public static string Clean(string value){return Regex.Replace((value??"").Normalize(NormalizationForm.FormKC),@"[\s\u200B-\u200F\uFEFF]","");}
  public static bool Matches(AndroidNode node,string label){return new[]{node.Text,node.Description}.Any(value=>{if(String.IsNullOrWhiteSpace(value))return false;string all=Clean(value);if(all==label||Regex.IsMatch(all,"^"+Regex.Escape(label)+@"(?:第\d+个标签.*|Tab\d+of\d+|按钮|Button)$",RegexOptions.IgnoreCase))return true;return value.Split(new[]{'\r','\n'},StringSplitOptions.RemoveEmptyEntries).Any(line=>Clean(line)==label);});}
  public static AndroidNode Find(AndroidPage page,string label){return page.Nodes.FirstOrDefault(n=>!n.Web&&n.Package==AndroidClient.Package&&n.Enabled&&n.Right>n.Left&&n.Bottom>n.Top&&n.X>=0&&n.X<page.Width&&n.Y>=0&&n.Y<page.Height&&Matches(n,label));}
  public static string Launcher(string output){foreach(string line in (output??"").Split('\n')){string candidate=line.Trim();if(Regex.IsMatch(candidate,"^"+Regex.Escape(AndroidClient.Package)+@"/[A-Za-z0-9_.$]+$"))return candidate;}return null;}
  public static bool LaunchFailed(string output){return Regex.IsMatch(output??"",@"Error\s*:|Error type\s*\d|Permission Denial|SecurityException|Background activity start denied|Activity not started,.*unable",RegexOptions.IgnoreCase);}
- public static string Hint(AndroidPage page){var packages=page.Nodes.Select(n=>n.Package??"").Distinct().ToArray();if(packages.Any(p=>p.Contains("permissioncontroller")||p=="com.android.packageinstaller"))return "智汇福大停在 Android 权限提示，请在模拟器中完成首次权限确认。";if(packages.Any(p=>p=="com.android.launcher3"||p=="com.ldmnq.launcher3"))return "当前仍是安卓桌面，智汇福大没有进入前台。";if(!packages.Contains(AndroidClient.Package))return "当前前台不是智汇福大，请通过显示隐藏页核对模拟器画面。";if(page.Nodes.Any(n=>n.Package==AndroidClient.Package&&Regex.IsMatch(n.Label??"","验证码|手机号|密码登录|登录失效|一键登录|其他账户登录|上次使用过的账号")))return "当前停在登录页面，请在模拟器中完成登录。";if(page.Nodes.Count(n=>!String.IsNullOrWhiteSpace(n.Label))<2)return "应用画面为空或未提供可读取的页面控件。";return "已打开智汇福大，但尚未识别到晚点名入口。";}
- public static string Summary(AndroidPage page){var b=new StringBuilder();b.AppendLine("画面大小="+page.Width+"x"+page.Height);b.AppendLine("控件数量="+page.Nodes.Count);b.AppendLine("应用控件数量="+page.Nodes.Count(n=>n.Package==AndroidClient.Package));b.AppendLine("网页控件数量="+page.Nodes.Count(n=>n.Web));b.AppendLine("前台应用="+String.Join(",",page.Nodes.Select(n=>n.Package??"").Distinct().Where(p=>Regex.IsMatch(p,@"^[A-Za-z0-9_.]+$"))));foreach(string label in new[]{"晚点名签到","业务","服务","办事","我的服务","消息","一键登录","其他账户登录"}){var node=Find(page,label);b.AppendLine("可见入口["+label+"]="+(node==null?"否":"是，范围 "+node.Left+","+node.Top+","+node.Right+","+node.Bottom));}b.AppendLine("页面状态="+Hint(page));b.AppendLine("已进入晚点名="+page.Attendance);return b.ToString();}
+ public static string Hint(AndroidPage page){if(HasEmulatorAd(page))return "雷电广告遮挡了应用，正在检查广告关闭按钮。";var packages=page.Nodes.Select(n=>n.Package??"").Distinct().ToArray();if(packages.Any(p=>p.Contains("permissioncontroller")||p=="com.android.packageinstaller"))return "智汇福大停在 Android 权限提示，请在模拟器中完成首次权限确认。";if(packages.Any(p=>p=="com.android.launcher3"||p=="com.ldmnq.launcher3"))return "当前仍是安卓桌面，智汇福大没有进入前台。";if(!packages.Contains(AndroidClient.Package))return "当前前台不是智汇福大，请通过显示隐藏页核对模拟器画面。";if(page.Nodes.Any(n=>n.Package==AndroidClient.Package&&Regex.IsMatch(n.Label??"","验证码|手机号|密码登录|登录失效|一键登录|其他账户登录|上次使用过的账号")))return "当前停在登录页面，请在模拟器中完成登录。";if(page.Nodes.Count(n=>!String.IsNullOrWhiteSpace(n.Label))<2)return "应用画面为空或未提供可读取的页面控件。";return "已打开智汇福大，但尚未识别到晚点名入口。";}
+ public static string Summary(AndroidPage page){var b=new StringBuilder();b.AppendLine("画面大小="+page.Width+"x"+page.Height);b.AppendLine("控件数量="+page.Nodes.Count);b.AppendLine("应用控件数量="+page.Nodes.Count(n=>n.Package==AndroidClient.Package));b.AppendLine("网页控件数量="+page.Nodes.Count(n=>n.Web));b.AppendLine("前台应用="+String.Join(",",page.Nodes.Select(n=>n.Package??"").Distinct().Where(p=>Regex.IsMatch(p,@"^[A-Za-z0-9_.]+$"))));foreach(string label in new[]{"晚点名签到","业务","服务","办事","我的服务","消息","一键登录","其他账户登录"}){var node=Find(page,label);b.AppendLine("可见入口["+label+"]="+(node==null?"否":"是，范围 "+node.Left+","+node.Top+","+node.Right+","+node.Bottom));}b.AppendLine("页面状态="+Hint(page));b.AppendLine("已进入晚点名="+page.Attendance);b.AppendLine("雷电广告遮挡="+HasEmulatorAd(page));b.AppendLine("广告关闭按钮可识别="+(AdClose(page)!=null));return b.ToString();}
 }
 static class AndroidClient {
  public const string Package="cn.edu.fzu.fdxypa";
@@ -61,8 +65,33 @@ static class AndroidClient {
  public static async Task Hide(Config c){var list=await Console(c,"list2");foreach(var line in list.Split('\n')){IntPtr window;if(InstanceRunning(line,c,out window)&&window!=IntPtr.Zero)ShowWindow(window,0);}}
  static async Task Ensure(Config c,Action<string> state){Index(c);if(!ValidConsole(c.EmulatorPath))throw new InvalidOperationException("请在运行环境页选择雷电的 ldconsole.exe。");try{if((await Shell(c,"getprop sys.boot_completed")).Trim()=="1"){await Hide(c);return;}}catch{}string list=await Console(c,"list2");bool running=list.Split('\n').Any(line=>{IntPtr w;return InstanceRunning(line,c,out w);});if(!running){state("正在隐藏桌面启动雷电模拟器…");if(!EmulatorHost.Start(c))throw new InvalidOperationException("雷电未能在隐藏桌面启动。");}for(int i=0;i<60;i++){await Hide(c);try{string ready=(await Shell(c,"getprop sys.boot_completed")).Trim();if(ready=="1")return;}catch{}await Task.Delay(1000);}throw new InvalidOperationException("模拟器启动尚未完成，请稍后重试。");}
  static int[] Bounds(string text){var matches=Regex.Matches(text??"",@"-?\d+");if(matches.Count!=4)return new int[4];return matches.Cast<Match>().Select(x=>Int32.Parse(x.Value,CultureInfo.InvariantCulture)).ToArray();}
- public static AndroidPage ParsePage(string xml){var doc=new XmlDocument{XmlResolver=null};doc.LoadXml(xml);var result=new AndroidPage();var root=doc.SelectSingleNode("/hierarchy/node") as XmlElement;if(root==null)throw new InvalidOperationException("没有读到模拟器画面。");var screen=Bounds(root.GetAttribute("bounds"));result.Width=screen[2]-screen[0];result.Height=screen[3]-screen[1];foreach(XmlElement e in doc.SelectNodes("//node")){var b=Bounds(e.GetAttribute("bounds"));var n=new AndroidNode{Text=e.GetAttribute("text"),Description=e.GetAttribute("content-desc"),Package=e.GetAttribute("package"),Enabled=e.GetAttribute("enabled")=="true",Clickable=e.GetAttribute("clickable")=="true",Left=b[0],Top=b[1],Right=b[2],Bottom=b[3]};if(String.IsNullOrEmpty(n.Package)){for(XmlNode ancestor=e.ParentNode;ancestor is XmlElement;ancestor=ancestor.ParentNode){string inherited=((XmlElement)ancestor).GetAttribute("package");if(!String.IsNullOrEmpty(inherited)){n.Package=inherited;break;}}}XmlElement web=null;for(XmlNode a=e;a is XmlElement;a=a.ParentNode){if(((XmlElement)a).GetAttribute("class")=="android.webkit.WebView"){web=(XmlElement)a;}}n.Web=web!=null&&n.Package==Package;if(n.Web){var wb=Bounds(web.GetAttribute("bounds"));var parent=web.ParentNode as XmlElement;if(parent!=null){var pb=Bounds(parent.GetAttribute("bounds"));if(wb[2]>wb[0]&&wb[3]>wb[1]&&pb[2]>pb[0]&&pb[3]>pb[1]){n.ScaleX=(pb[2]-pb[0])/(double)(wb[2]-wb[0]);n.ScaleY=(pb[3]-pb[1])/(double)(wb[3]-wb[1]);n.OffsetX=pb[0]-wb[0]*n.ScaleX;n.OffsetY=pb[1]-wb[1]*n.ScaleY;}}}result.Nodes.Add(n);}return result;}
- public static async Task<AndroidPage> Read(Config c){await DeviceGate.WaitAsync();try{await Shell(c,"uiautomator dump /sdcard/fzu-attendance-ui.xml");string xml=await Shell(c,"cat /sdcard/fzu-attendance-ui.xml");return ParsePage(xml);}finally{DeviceGate.Release();}}
+ public static AndroidPage ParsePage(string xml,int screenWidth=0,int screenHeight=0){var doc=new XmlDocument{XmlResolver=null};doc.LoadXml(xml);var result=new AndroidPage();var root=doc.SelectSingleNode("/hierarchy/node") as XmlElement;if(root==null)throw new InvalidOperationException("没有读到模拟器画面。");var screen=Bounds(root.GetAttribute("bounds"));result.Width=screen[2]-screen[0];result.Height=screen[3]-screen[1];if(screenWidth>0&&screenHeight>0){result.Width=screenWidth;result.Height=screenHeight;}foreach(XmlElement e in doc.SelectNodes("//node")){var b=Bounds(e.GetAttribute("bounds"));var n=new AndroidNode{Text=e.GetAttribute("text"),Description=e.GetAttribute("content-desc"),Package=e.GetAttribute("package"),ResourceId=e.GetAttribute("resource-id"),Enabled=e.GetAttribute("enabled")=="true",Clickable=e.GetAttribute("clickable")=="true",Left=b[0],Top=b[1],Right=b[2],Bottom=b[3]};if(String.IsNullOrEmpty(n.Package)){for(XmlNode ancestor=e.ParentNode;ancestor is XmlElement;ancestor=ancestor.ParentNode){string inherited=((XmlElement)ancestor).GetAttribute("package");if(!String.IsNullOrEmpty(inherited)){n.Package=inherited;break;}}}XmlElement web=null;for(XmlNode a=e;a is XmlElement;a=a.ParentNode){if(((XmlElement)a).GetAttribute("class")=="android.webkit.WebView"){web=(XmlElement)a;}}n.Web=web!=null&&n.Package==Package;if(n.Web){var wb=Bounds(web.GetAttribute("bounds"));var parent=web.ParentNode as XmlElement;if(parent!=null){var pb=Bounds(parent.GetAttribute("bounds"));if(wb[2]>wb[0]&&wb[3]>wb[1]&&pb[2]>pb[0]&&pb[3]>pb[1]){n.ScaleX=(pb[2]-pb[0])/(double)(wb[2]-wb[0]);n.ScaleY=(pb[3]-pb[1])/(double)(wb[3]-wb[1]);n.OffsetX=pb[0]-wb[0]*n.ScaleX;n.OffsetY=pb[1]-wb[1]*n.ScaleY;}}}result.Nodes.Add(n);}return result;}
+ public static async Task<AndroidPage> Read(Config c){await DeviceGate.WaitAsync();try{
+  int[] size=AndroidNavigation.DisplaySize(await Shell(c,"wm size"));
+  string dump="/sdcard/fzu-attendance-ui-"+Process.GetCurrentProcess().Id+".xml";
+  await Shell(c,"uiautomator dump "+dump);string xml=await Shell(c,"cat "+dump);
+  return ParsePage(xml,size[0],size[1]);
+ }finally{DeviceGate.Release();}}
+ // Only the verified emulator ad's close resource is allowed outside the school app.
+ static async Task<bool> DismissAd(Config c,AndroidPage page,Action<string> state){
+  if(!AndroidNavigation.HasEmulatorAd(page))return false;
+  for(int attempt=0;attempt<3;attempt++){
+   var live=await Read(c);if(!AndroidNavigation.HasEmulatorAd(live))return true;
+   var close=AndroidNavigation.AdClose(live);
+   if(close==null)throw new InvalidOperationException("雷电广告遮挡了应用，但未识别到可用的关闭按钮；本次停止操作，请导出诊断。");
+   state("检测到雷电广告，正在后台关闭广告…");
+   await Shell(c,"input tap "+close.X.ToString(CultureInfo.InvariantCulture)+" "+close.Y.ToString(CultureInfo.InvariantCulture));
+   await Task.Delay(800);
+  }
+  if(AndroidNavigation.HasEmulatorAd(await Read(c)))throw new InvalidOperationException("已尝试关闭雷电广告三次，广告仍未消失；本次停止操作，请查看隐藏页。");
+  return true;
+ }
+ public static async Task<string> AdProbe(Config c){
+  IntPtr foreground=GetForegroundWindow();var before=await Read(c);bool found=AndroidNavigation.HasEmulatorAd(before);
+  bool handled=await DismissAd(c,before,Store.Log);var after=await Read(c);
+  if(AndroidNavigation.HasEmulatorAd(after))throw new InvalidOperationException("广告仍未关闭。");
+  return "发现广告="+found+"\n已处理="+handled+"\n前台窗口未改变="+(foreground==GetForegroundWindow())+"\n本次仅处理广告，未启动应用、登录或提交签到。\n"+AndroidNavigation.Summary(after);
+ }
  static async Task Tap(Config c,AndroidPage page,AndroidNode node){if(node==null||node.Package!=Package||!node.Enabled||node.X<0||node.Y<0||node.X>=page.Width||node.Y>=page.Height||node.Right<=node.Left||node.Bottom<=node.Top)throw new InvalidOperationException("页面按钮不在可操作区域，请查看隐藏页。");await Shell(c,"input tap "+node.X.ToString(CultureInfo.InvariantCulture)+" "+node.Y.ToString(CultureInfo.InvariantCulture));}
  public static async Task RefreshPosition(Config c){string coordinates=SavedPosition(c);await Console(c,"action --index "+Index(c)+" --key call.locate --value "+coordinates);}
  static async Task LaunchApp(Config c){
@@ -82,6 +111,7 @@ static class AndroidClient {
   bool serviceTapped=false,relaunched=false;DateTime began=DateTime.UtcNow;AndroidPage last=null;
   for(int i=0;i<30&&DateTime.UtcNow-began<TimeSpan.FromSeconds(90);i++){
    var page=await Read(c);last=page;lastNavigation=AndroidNavigation.Summary(page);
+   if(await DismissAd(c,page,state)){serviceTapped=false;await LaunchApp(c);await Task.Delay(1200);continue;}
    if(page.Attendance){if(!String.IsNullOrEmpty(page.Date)&&page.Date!=Store.Now().ToString("yyyy-MM-dd")){await Shell(c,"input keyevent 4");await Task.Delay(700);continue;}return page;}
    string hint=AndroidNavigation.Hint(page);
    if(hint.Contains("权限提示")||hint.Contains("登录页面"))throw new InvalidOperationException(hint);
@@ -120,13 +150,15 @@ static class AndroidClient {
   while(true){bool restart=restartRequested();if(restart)clearRestart();var page=await OpenAttendance(c,restart,state);bool submit=!dry||(restart&&Rules.Due(c,Store.Now(),true));
    // A saved point is not a new GPS event. Publish it AFTER the page starts requesting location.
    await Task.Delay(1200);await RefreshPosition(c);state("已在后台重新发送雷电中已选的位置，正在等待晚点名读取定位…");DateTime began=DateTime.UtcNow,nextPosition=began.AddSeconds(5);DateTime? limitSince=null;bool retryOpen=false;
-   for(int attempts=0;attempts<40;attempts++){if(restartRequested()){retryOpen=true;break;}page=await Read(c);string today=Store.Now().ToString("yyyy-MM-dd");if(page.Attendance&&page.Date==today&&page.Confirmed){c.SuccessDate=today;state("今日已签到，已确认安卓页面结果。");return;}
+   for(int attempts=0;attempts<40;attempts++){if(restartRequested()){retryOpen=true;break;}page=await Read(c);
+    if(await DismissAd(c,page,state)){page=await OpenAttendance(c,false,state);await RefreshPosition(c);}
+    string today=Store.Now().ToString("yyyy-MM-dd");if(page.Attendance&&page.Date==today&&page.Confirmed){c.SuccessDate=today;state("今日已签到，已确认安卓页面结果。");return;}
     if(page.LoginExpired)throw new InvalidOperationException("智汇福大登录已失效，请在模拟器中重新登录。");if(!page.Attendance)throw new InvalidOperationException("模拟器当前已离开晚点名页，请重新检查连接。");
     if(submit&&!force&&!c.Enabled){state("自动签到已暂停，已停止本次操作。");return;}
     if(page.Limited){if(!limitSince.HasValue)limitSince=DateTime.UtcNow;if(Engine.LimitExpired(limitSince,DateTime.UtcNow,true)){retryOpen=true;break;}}else limitSince=null;
     if(page.Date==today&&page.Ready!=null&&page.Reason=="可签到"&&!page.LoginExpired){if(!submit){state("定位刷新成功：安卓晚点名页面已显示“点击签到”；本次检查未提交。");return;}if(!Rules.InWindow(Store.Now())){state("已超出签到时段，未提交。");return;}
      // Read the live page again, including its date and enabled label, immediately before the tap.
-     var live=await Read(c);if(restartRequested()){retryOpen=true;break;}if(!live.CanSubmit(Store.Now())||(!force&&!c.Enabled)){state("页面状态已变化，本次未提交；稍后重试。");return;}await Tap(c,live,live.Ready);state("已点击安卓页面签到按钮，正在核验结果…");for(int i=0;i<10;i++){await Task.Delay(1200);var checkedPage=await Read(c);if(checkedPage.Attendance&&checkedPage.Date==today&&checkedPage.Confirmed){c.SuccessDate=today;state("签到成功，已确认安卓晚点名页面显示“已签到”。");return;}}state("已点击安卓页面，但尚未确认成功；5 分钟后重新检查。");return;}
+     var live=await Read(c);if(await DismissAd(c,live,state)){page=await OpenAttendance(c,false,state);await RefreshPosition(c);continue;}if(restartRequested()){retryOpen=true;break;}if(!live.CanSubmit(Store.Now())||(!force&&!c.Enabled)){state("页面状态已变化，本次未提交；稍后重试。");return;}await Tap(c,live,live.Ready);state("已点击安卓页面签到按钮，正在核验结果…");for(int i=0;i<10;i++){await Task.Delay(1200);var checkedPage=await Read(c);if(await DismissAd(c,checkedPage,state)){checkedPage=await Read(c);}if(checkedPage.Attendance&&checkedPage.Date==today&&checkedPage.Confirmed){c.SuccessDate=today;state("签到成功，已确认安卓晚点名页面显示“已签到”。");return;}}state("已点击安卓页面，但尚未确认成功；5 分钟后重新检查。");return;}
     if(page.Date==today&&!page.Locating&&!page.Limited&&page.Reason!="页面尚未准备好"){state("定位已刷新，当前页面提示："+page.Reason+"。稍后重试。");return;}
     if(DateTime.UtcNow>=nextPosition){await RefreshPosition(c);nextPosition=DateTime.UtcNow.AddSeconds(5);}if((DateTime.UtcNow-began).TotalSeconds>=110)break;await Task.Delay(1500);
    }
