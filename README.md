@@ -4,11 +4,11 @@ Windows 桌面辅助程序，通过雷电或 MuMu 模拟器中的安卓版智汇
 
 ## 下载安装
 
-**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.7.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
+**[下载最新一键安装包](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases/latest/download/FzuAttendanceAssistant-Setup-1.0.8.exe)** · [全部发布版本](https://github.com/shuiyilianmian17/fzu-attendance-assistant/releases)
 
 升级时先从托盘退出旧版助手，再安装新版，原设置会保留。
 
-下载 `FzuAttendanceAssistant-Setup-1.0.7.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
+下载 `FzuAttendanceAssistant-Setup-1.0.8.exe`，双击后点“立即安装”。安装程序会创建桌面快捷方式，并让助手在登录 Windows 后启动。无需管理员权限，不需要另外安装 Python、Node.js 或开发工具。
 
 需要 Windows 10 1903 及以上或 Windows 11，64 位系统与 .NET Framework 4.8。现代 Windows 已包含这一运行环境。
 
@@ -18,7 +18,7 @@ Windows 桌面辅助程序，通过雷电或 MuMu 模拟器中的安卓版智汇
 
 1. 安装 MuMu 模拟器（也兼容雷电），在模拟器中安装并登录学校官方提供的安卓版智汇福大。
 2. 将“晚点名签到”加入智汇福大的“我的服务”。
-3. 在 MuMu 定位工具中确认实际位置并保存默认定位。在助手运行环境中读取默认位置、核对经纬度后保存；每次签到重新发送助手保存的位置，不受 MuMu 重置影响。
+3. 默认使用旗山校区附近的位置，助手启动 MuMu 后自动发送，无需手动定位；如需修改，可在运行环境中填写并保存。
 4. 打开助手的“运行环境”，自动查找 MuMu，或选择其 `nx_main` 目录中的 `mumu-cli.exe`（雷电选择 `ldconsole.exe`），填写对应实例编号，第一个实例通常为 `0`。
 5. 点“检查连接”验证页面和定位；在“签到设置”选择 `21:00–23:59` 内的时间，启用自动签到并保存。
 
@@ -67,7 +67,7 @@ powershell -ExecutionPolicy Bypass -File .\release.ps1 -IsccPath 'C:\Program Fil
 
 ## MuMu 配置
 
-选择 MuMu 安装目录 `nx_main` 中的 `mumu-cli.exe`（也兼容 `MuMuManager.exe`），实例编号与多开器一致。在 MuMu 中安装并登录智汇福大，加入晚点名入口，并在定位工具中将实际位置保存为默认定位。在助手运行环境中读取默认位置并核对经纬度，然后保存。助手独立保存此位置，每次启动和进入晚点名后重新发送，等待期间重复刷新。已于 2026-10-29 在 MuMu Android 15 上完成真实签到，确认页面显示成功，并验证模拟器随后自动退出。
+选择 MuMu 安装目录 `nx_main` 中的 `mumu-cli.exe`（也兼容 `MuMuManager.exe`），实例编号与多开器一致。在 MuMu 中安装并登录智汇福大，加入晚点名入口。助手已内置旗山校区附近的位置，无需在 MuMu 中手动调整；如需其他位置，可在运行环境中修改并保存。助手独立保存此位置，每次启动和进入晚点名后重新发送，等待期间重复刷新。已于 2026-10-29 在 MuMu Android 15 上完成真实签到，确认页面显示成功，并验证模拟器随后自动退出。
 
 ## 自动查找与软件更新
 
@@ -79,4 +79,6 @@ powershell -ExecutionPolicy Bypass -File .\release.ps1 -IsccPath 'C:\Program Fil
 
 自动签到或“立即尝试签到”确认当日页面显示“已签到／签到成功”后，助手会自动关闭所选模拟器实例，并记录关闭完成。关闭失败时保留成功结果和待关闭状态，每分钟重试关闭，不重复签到；助手重启后继续恢复待关闭操作。手动操作模式不会被自动关闭，只读检查与重新定位不会触发这一流程。
 
-固定位置仅保存在本机设置中。位置改变时，请重新核对并保存；不会跟随人移动。保存签到设置、启动或恢复电脑时，若已过设定时间且仍在 21:00–23:59 内，会立即检查；正在手动操作模拟器时暂缓，关闭后恢复。失败后间隔 5 分钟重试，当天确认成功后不重复提交。
+安装包内置发布者提供的旗山校区附近默认位置；个人修改后的设置仍保存在本机。位置改变时，请重新核对并保存；不会跟随人移动。保存签到设置、启动或恢复电脑时，若已过设定时间且仍在 21:00–23:59 内，会立即检查；正在手动操作模拟器时暂缓，关闭后恢复。失败后间隔 5 分钟重试，当天确认成功后不重复提交。
+
+从 v1.0.8 起，新安装以及未保存位置的旧配置会使用内置旗山校区默认位置。启动 MuMu、打开模拟器窗口和进入晚点名后自动发送；用户已保存的自定义位置保留。可点击“恢复旗山校区默认位置”，再保存运行环境。内置固定位置不代表设备的实时位置。

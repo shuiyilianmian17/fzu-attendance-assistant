@@ -29,6 +29,7 @@ static class AndroidTests {
 
   Require(MuMuClient.IsPath(@"D:\MuMu\mumu-cli.exe")&&!MuMuClient.IsPath(@"D:\leidian\ldconsole.exe"),"模拟器类型识别错误");
   var landscape=AndroidClient.ParsePage("<hierarchy rotation='1'><node bounds='[0,0][1920,1080]'/></hierarchy>",1080,1920);Require(landscape.Width==1920&&landscape.Height==1080,"旋转屏幕尺寸换算错误");
+  var fresh=new Config();Require(MuMuClient.ValidatePosition(fresh.FixedPosition)==Config.DefaultPosition,"新用户应使用内置位置");foreach(string old in new[]{"{}","{\"FixedPosition\":\"\"}","{\"FixedPosition\":null}"}){var migrated=Store.Json.Deserialize<Config>(old);migrated.ApplyDefaults();Require(migrated.FixedPosition==Config.DefaultPosition,"旧配置未保存位置时应补齐默认位置");}var custom=new Config{FixedPosition="120.1,30.2"};custom.ApplyDefaults();Require(custom.FixedPosition=="120.1,30.2","用户自行保存的位置不得被默认值覆盖");
   var fixedConfig=new Config{EmulatorPath=@"Z:\MuMu\mumu-cli.exe",FixedPosition="120.1,30.2"};Require(MuMuClient.Position(fixedConfig)=="120.1,30.2","固定位置不应依赖模拟器默认配置");var restoredPoint=Store.Json.Deserialize<Config>(Store.Json.Serialize(fixedConfig));Require(MuMuClient.Position(restoredPoint)=="120.1,30.2","重启后应保留固定位置");foreach(string invalid in new[]{"", "181,30", "120,91", "NaN,30", "120,Infinity", "0,0"}){bool rejected=false;try{MuMuClient.ValidatePosition(invalid);}catch(InvalidOperationException){rejected=true;}Require(rejected,"无效位置不得进入签到流程");}
   var manual=new Config{Enabled=true,Time="21:05",ManualEmulator=true};var now=new DateTime(2026,10,28,22,0,0);
   Require(!Rules.Due(manual,now,true),"手动操作期间不应自动接管模拟器");

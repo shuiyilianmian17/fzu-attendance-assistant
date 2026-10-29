@@ -18,7 +18,7 @@ static class Store {
  public static JavaScriptSerializer Json=new JavaScriptSerializer();
  static string CreateDataDir(){string path=File.Exists(Path.Combine(Dir,"installed.flag"))?Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"FzuAttendanceAssistant"):Dir;Directory.CreateDirectory(path);return path;}
  public static string FilePath(string name){return Path.Combine(DataDir,name);}
- public static Config Read(){try{return Json.Deserialize<Config>(File.ReadAllText(FilePath("settings.json")));}catch{return new Config();}}
+ public static Config Read(){try{var c=Json.Deserialize<Config>(File.ReadAllText(FilePath("settings.json")))??new Config();c.ApplyDefaults();return c;}catch{return new Config();}}
  public static void Save(Config c){string tmp=FilePath("settings.tmp");File.WriteAllText(tmp,Json.Serialize(c),Encoding.UTF8);if(File.Exists(FilePath("settings.json"))) File.Replace(tmp,FilePath("settings.json"),null);else File.Move(tmp,FilePath("settings.json"));}
  public static DateTime Now(){return DateTime.UtcNow.AddHours(8);}
  public static void Log(string s){try{File.AppendAllText(FilePath("运行日志.txt"),Now().ToString("yyyy-MM-dd HH:mm:ss ")+s+Environment.NewLine,Encoding.UTF8);}catch{}}
@@ -31,7 +31,9 @@ public class Config {
  public string LastState="请先在运行环境中选择 MuMu，并在签到设置中启用自动签到。";
  public string EmulatorPath="";
  public int EmulatorIndex=0;
- public string FixedPosition="";
+ public const string DefaultPosition="119.195,26.0602";
+ public string FixedPosition=DefaultPosition;
+ public void ApplyDefaults(){if(String.IsNullOrWhiteSpace(FixedPosition))FixedPosition=DefaultPosition;}
  public bool ClosePending=false;
  public bool ManualEmulator=false;
  public string EmulatorResumeAt="";
@@ -55,7 +57,7 @@ class Engine {
  public async Task OpenEmulator(){
   if(busy){State("正在处理签到或模拟器操作，请稍后再打开窗口。");return;}
   busy=true;Config.ClosePending=false;Config.ManualEmulator=true;Config.EmulatorResumeAt="";Store.Save(Config);
-  try{await AndroidClient.OpenEmulatorWindow(Config,State);State("模拟器窗口已打开，可手动登录或操作；自动签到暂缓，关闭模拟器后恢复定时。");}
+  try{await AndroidClient.OpenEmulatorWindow(Config,State);await AndroidClient.RefreshPosition(Config);State("模拟器窗口已打开，并已发送保存的签到位置；可手动登录或操作，关闭模拟器后恢复定时。");}
   catch(Exception e){Config.ManualEmulator=false;State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
   finally{busy=false;}
  }
