@@ -7,7 +7,7 @@ $fzuPortable = Join-Path $PSScriptRoot 'dist\portable'
 $fzuTests = Join-Path $PSScriptRoot 'dist\test-run'
 New-Item -ItemType Directory -Path $fzuTests -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $fzuPortable '晚点名助手.exe') -Destination $fzuTests -Force
-foreach ($fzuMode in @('--self-test','--android-page-test','--ui-test','--update-test','--completion-test','--preview-test')) {
+foreach ($fzuMode in @('--self-test','--android-page-test','--ui-test','--update-test','--completion-test','--preview-test','--log-test')) {
   $fzuProcess = Start-Process -FilePath (Join-Path $fzuTests '晚点名助手.exe') -ArgumentList $fzuMode -WindowStyle Hidden -PassThru -Wait
   if ($fzuProcess.ExitCode -ne 0) { throw ('检查未通过：' + $fzuMode) }
 }

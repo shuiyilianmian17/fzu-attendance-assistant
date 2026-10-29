@@ -21,7 +21,13 @@ static class Store {
  public static Config Read(){try{var c=Json.Deserialize<Config>(File.ReadAllText(FilePath("settings.json")))??new Config();c.ApplyDefaults();return c;}catch{return new Config();}}
  public static void Save(Config c){string tmp=FilePath("settings.tmp");File.WriteAllText(tmp,Json.Serialize(c),Encoding.UTF8);if(File.Exists(FilePath("settings.json"))) File.Replace(tmp,FilePath("settings.json"),null);else File.Move(tmp,FilePath("settings.json"));}
  public static DateTime Now(){return DateTime.UtcNow.AddHours(8);}
- public static void Log(string s){try{File.AppendAllText(FilePath("运行日志.txt"),Now().ToString("yyyy-MM-dd HH:mm:ss ")+s+Environment.NewLine,Encoding.UTF8);}catch{}}
+ static readonly Mutex LogMutex=new Mutex(false,@"Local\FzuAttendanceAssistant.DailyLog.v1");static DateTime logDay=DateTime.MinValue;
+ internal static void PruneLog(string path,DateTime now){if(!File.Exists(path))return;string temporary=path+".daily.tmp",prefix=now.ToString("yyyy-MM-dd ");try{using(var reader=new StreamReader(path,Encoding.UTF8))using(var writer=new StreamWriter(temporary,false,Encoding.UTF8)){string line;while((line=reader.ReadLine())!=null)if(line.StartsWith(prefix,StringComparison.Ordinal))writer.WriteLine(line);}File.Replace(temporary,path,null);}finally{if(File.Exists(temporary))File.Delete(temporary);}}
+ static bool LogLock(){try{return LogMutex.WaitOne(1000);}catch(AbandonedMutexException){return true;}}
+ static bool MaintainLogCore(DateTime now){if(logDay==now.Date)return false;PruneLog(FilePath("运行日志.txt"),now);logDay=now.Date;return true;}
+ public static bool MaintainLog(){bool held=false;try{held=LogLock();return held&&MaintainLogCore(Now());}catch{return false;}finally{if(held)LogMutex.ReleaseMutex();}}
+ public static void Log(string s){bool held=false;try{held=LogLock();if(!held)return;var now=Now();MaintainLogCore(now);File.AppendAllText(FilePath("运行日志.txt"),now.ToString("yyyy-MM-dd HH:mm:ss ")+s+Environment.NewLine,Encoding.UTF8);}catch{}finally{if(held)LogMutex.ReleaseMutex();}}
+ internal static void LogTests(){string path=FilePath("daily-log-fixture.txt");var day=new DateTime(2026,10,30);File.WriteAllText(path,"2026-10-29 23:59:59 old\n2026-10-30 00:00:00 current\n2026-10-30 12:00:00 current2\n",Encoding.UTF8);PruneLog(path,day);string text=File.ReadAllText(path);if(text.Contains("old")||!text.Contains("current2"))throw new Exception("startup log cleanup");PruneLog(path,day);if(File.ReadAllText(path)!=text)throw new Exception("same day preservation");PruneLog(path,day.AddDays(1));if(File.ReadAllText(path).Length!=0)throw new Exception("midnight log cleanup");File.Delete(path);File.WriteAllText(FilePath("每日日志检查.txt"),"通过：启动清除旧日、当天记录保留、跨天清空。个人配置不受影响。");}
  public static string SafeError(Exception e){return e is TimeoutException?"模拟器响应超时，请导出诊断查看连接状态。":"操作未完成（"+e.GetType().Name+"），请导出诊断。";}
 }
 public class Config {
@@ -110,7 +116,7 @@ class MainForm:Form {
  async Task UserAction(Func<Task> action){int mine=++userAction;userOperating=true;engine.CancelCurrent();try{await engine.Interrupt();if(mine!=userAction)return;await action();}catch(OperationCanceledException){}catch(Exception e){ui.Feedback(e is InvalidOperationException?e.Message:Store.SafeError(e),true);}finally{if(mine==userAction)userOperating=false;}}
  Config config;Engine engine;Dashboard ui;NotifyIcon tray;HiddenPagePreview preview;System.Windows.Forms.Timer timer,showRequests;bool quit,initial=true,hideInitial,updating;DateTime lastTick=DateTime.MinValue;
  public MainForm(bool hidden){
-  hideInitial=hidden;config=Store.Read();if(!Rules.ValidTime(config.Time))config.Time="21:05";if(!AndroidClient.ValidConsole(config.EmulatorPath)){string found=AndroidClient.Detect(config.EmulatorPath);if(found!=null){config.EmulatorPath=found;Store.Save(config);}}
+  Store.MaintainLog();hideInitial=hidden;config=Store.Read();if(!Rules.ValidTime(config.Time))config.Time="21:05";if(!AndroidClient.ValidConsole(config.EmulatorPath)){string found=AndroidClient.Detect(config.EmulatorPath);if(found!=null){config.EmulatorPath=found;Store.Save(config);}}
   Text="晚点名助手 · v"+typeof(MainForm).Assembly.GetName().Version.ToString(3);Icon=System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath)??SystemIcons.Application;
   ClientSize=new Size(1060,720);MinimumSize=new Size(950,680);StartPosition=FormStartPosition.CenterScreen;BackColor=Color.FromArgb(242,245,250);
   ui=new Dashboard(config);var host=new System.Windows.Forms.Integration.ElementHost{Dock=DockStyle.Fill,Child=ui.Root};Controls.Add(host);
@@ -120,7 +126,7 @@ class MainForm:Form {
   tray=new NotifyIcon{Text="晚点名助手",Icon=this.Icon,Visible=true,ContextMenuStrip=menu};tray.DoubleClick+=delegate{Show();Activate();};
   FormClosing+=delegate(object sender,FormClosingEventArgs e){if(!quit&&e.CloseReason==CloseReason.UserClosing){e.Cancel=true;Hide();}else{tray.Visible=false;timer.Stop();showRequests.Stop();}};
   showRequests=new System.Windows.Forms.Timer{Interval=500};showRequests.Tick+=delegate{if(Program.ShowRequest.WaitOne(0)){Show();WindowState=FormWindowState.Normal;Activate();}};showRequests.Start();
-  timer=new System.Windows.Forms.Timer{Interval=1000};timer.Tick+=async delegate{if(updating||userOperating)return;DateTime now=Store.Now();bool wake=lastTick!=DateTime.MinValue&&(now-lastTick).TotalSeconds>90;lastTick=now;ui.Refresh(config);await engine.ObserveManualWindow();if(updating||userOperating)return;await engine.Check(false,wake,false);};
+  timer=new System.Windows.Forms.Timer{Interval=1000};timer.Tick+=async delegate{if(Store.MaintainLog())ui.LoadLogs();if(updating||userOperating)return;DateTime now=Store.Now();bool wake=lastTick!=DateTime.MinValue&&(now-lastTick).TotalSeconds>90;lastTick=now;ui.Refresh(config);await engine.ObserveManualWindow();if(updating||userOperating)return;await engine.Check(false,wake,false);};
   Shown+=delegate{StartService();};
  }
  protected override void SetVisibleCore(bool value){if(value&&hideInitial){hideInitial=false;if(!IsHandleCreated)CreateHandle();BeginInvoke(new Action(StartService));return;}base.SetVisibleCore(value);}
@@ -152,6 +158,7 @@ static class Program {
  internal static readonly EventWaitHandle ShowRequest=new EventWaitHandle(false,EventResetMode.AutoReset,@"Local\FzuAttendanceAssistant.ShowSettings.v1");
  [STAThread]static int Main(string[] args){try{
   if(args.Contains("--install-update"))return UpdateClient.Worker(args);
+  if(args.Contains("--log-test")){Store.LogTests();return 0;}
   if(args.Contains("--preview-test")){PreviewGeometry.Tests();return 0;}
   if(args.Contains("--completion-test")){CompletionTests.Run().GetAwaiter().GetResult();return 0;}
   if(args.Contains("--update-test")){UpdateClient.Tests();return 0;}
