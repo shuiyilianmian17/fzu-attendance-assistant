@@ -40,6 +40,7 @@ public class Config {
  public const string DefaultPosition="119.195,26.0602";
  public string FixedPosition=DefaultPosition;
  [System.Web.Script.Serialization.ScriptIgnore] public string SessionPosition;
+ [System.Web.Script.Serialization.ScriptIgnore] public bool OwnsMuMu,RestoreMuMuWindow;
  public void ApplyDefaults(){if(String.IsNullOrWhiteSpace(FixedPosition))FixedPosition=DefaultPosition;}
  public bool ClosePending=false;
  public bool ManualEmulator=false;
