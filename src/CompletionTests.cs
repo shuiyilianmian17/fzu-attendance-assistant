@@ -18,6 +18,12 @@ static class CompletionTests {
   resumed.AndroidCheck=(cfg,dry,force,requested,clear,state)=>{throw new Exception("关闭恢复不应再次签到");};
   resumed.EmulatorStop=(cfg,state)=>{closes++;return Task.FromResult(0);};await resumed.FinishCompletedSignIn();Require(!restored.ClosePending,"重启后应恢复关闭并清除标记");
   restored.ManualEmulator=true;restored.ClosePending=true;await resumed.FinishCompletedSignIn();Require(restored.ClosePending,"手动操作期间不得自动关闭窗口");
+  Require(Store.Json.Deserialize<Config>("{}").AutoCloseEmulator,"旧配置缺少开关时应默认开启");
+  c.AutoCloseEmulator=false;c.ClosePending=true;Store.Save(c);
+  var keep=Store.Read();Require(!keep.AutoCloseEmulator,"关闭设置应在重启后保留");
+  var keepEngine=new Engine(keep,null);keepEngine.AndroidCheck=engine.AndroidCheck;keepEngine.EmulatorStop=resumed.EmulatorStop;
+  int closed=closes;await keepEngine.FinishCompletedSignIn();Require(!keep.ClosePending&&closes==closed,"关闭开关后不能执行遗留的关闭操作");
+  await keepEngine.Check(false,true,true);Require(!keep.ClosePending&&closes==closed&&keep.LastState.Contains("继续运行"),"关闭开关后签到成功应保留模拟器");
   var interrupted=new Config{Enabled=true,SuccessDate="previous"};var priority=new Engine(interrupted,null);bool stale=false;
   priority.AndroidCheck=async (cfg,dry,force,requested,clear,state)=>{await Operation.Delay(30000);stale=true;return false;};
   var running=priority.Check(false,true,true);var clock=System.Diagnostics.Stopwatch.StartNew();await priority.Interrupt();await running;

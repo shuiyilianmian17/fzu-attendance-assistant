@@ -42,6 +42,7 @@ public class Config {
  [System.Web.Script.Serialization.ScriptIgnore] public string SessionPosition;
  [System.Web.Script.Serialization.ScriptIgnore] public bool OwnsMuMu,RestoreMuMuWindow;
  public void ApplyDefaults(){if(String.IsNullOrWhiteSpace(FixedPosition))FixedPosition=DefaultPosition;}
+ public bool AutoCloseEmulator=true;
  public bool ClosePending=false;
  public bool ManualEmulator=false;
  public string EmulatorResumeAt="";
@@ -95,14 +96,16 @@ class Engine {
   catch(Exception e){closeRetry=Store.Now().AddMinutes(1);State("签到已确认成功，但模拟器关闭未完成；一分钟后仅重试关闭，不会重复签到。"+(e is InvalidOperationException?e.Message:Store.SafeError(e)));}
  }
  public async Task FinishCompletedSignIn(){
-  if(busy||Config.ManualEmulator||!Config.ClosePending||Store.Now()<closeRetry)return;
+  if(busy||Config.ManualEmulator||!Config.ClosePending)return;
+  if(!Config.AutoCloseEmulator){Config.ClosePending=false;Store.Save(Config);return;}
+  if(Store.Now()<closeRetry)return;
   busy=true;active=Operation.Start();try{await CloseConfirmedCore();}finally{busy=false;active=null;}
  }
  public async Task Check(bool dry,bool catchup,bool force){
   if(busy)return;if(force)Config.ManualEmulator=false;if(Config.ManualEmulator)return;
   if(Config.ClosePending){await FinishCompletedSignIn();return;}
   if(force){Config.EmulatorResumeAt="";Store.Save(Config);}if(!restartRequested&&!dry&&!force&&(!Rules.Due(Config,Store.Now(),catchup)||Store.Now()<retry))return;
-  busy=true;active=Operation.Start();try{try{bool confirmed=await AndroidCheck(Config,dry,force,()=>restartRequested,()=>restartRequested=false,State);if(confirmed){Config.ClosePending=true;Store.Save(Config);await CloseConfirmedCore();}}
+  busy=true;active=Operation.Start();try{try{bool confirmed=await AndroidCheck(Config,dry,force,()=>restartRequested,()=>restartRequested=false,State);if(confirmed){Config.ClosePending=Config.AutoCloseEmulator;if(Config.ClosePending){Store.Save(Config);await CloseConfirmedCore();}else State("签到已确认成功，模拟器继续运行。");}}
   catch(OperationCanceledException){Store.Save(Config);}
   catch(Exception e){State(e is InvalidOperationException?e.Message:Store.SafeError(e));}
   if(active!=null&&!active.IsCancellationRequested&&AndroidClient.ValidConsole(Config.EmulatorPath)){try{await AndroidClient.ReleaseWindow(Config);}catch{}}}finally{busy=false;active=null;if(!dry)retry=Store.Now().AddMinutes(5);}
@@ -122,6 +125,7 @@ class MainForm:Form {
   ClientSize=new Size(1060,720);MinimumSize=new Size(950,680);StartPosition=FormStartPosition.CenterScreen;BackColor=Color.FromArgb(242,245,250);
   ui=new Dashboard(config);var host=new System.Windows.Forms.Integration.ElementHost{Dock=DockStyle.Fill,Child=ui.Root};Controls.Add(host);
   engine=new Engine(config,delegate(string state){ui.Refresh(config);ui.LoadLogs();tray.Text=("晚点名助手 · "+state).Substring(0,Math.Min(63,("晚点名助手 · "+state).Length));});
+  ui.SetAutoCloseEmulator=SetAutoCloseEmulator;
   ui.SaveSchedule=SaveSchedule;ui.SaveEnvironment=SaveEnvironment;ui.CheckConnection=async delegate{await UserAction(()=>engine.Check(true,false,true));};ui.AttemptNow=async delegate{await UserAction(()=>engine.Check(false,true,true));};ui.LoginHelp=LoginHelp;ui.ShowHiddenPage=ShowHiddenPage;ui.RestartClient=async delegate{await UserAction(()=>engine.RestartClient());};ui.RefreshLocation=async delegate{await UserAction(()=>engine.RefreshLocation());};ui.ExportDiagnostics=ExportDiagnostics;ui.CheckUpdate=CheckUpdate;ui.OpenEmulator=async delegate{await UserAction(()=>engine.OpenEmulator());};ui.CloseEmulator=async delegate{await UserAction(()=>engine.CloseEmulator());};
   var menu=new ContextMenuStrip();menu.Items.Add("打开设置",null,delegate{Show();WindowState=FormWindowState.Normal;Activate();});menu.Items.Add("检查连接",null,async delegate{await UserAction(()=>engine.Check(true,false,true));});menu.Items.Add("显示隐藏页",null,delegate{ShowHiddenPage();});menu.Items.Add("重新定位",null,async delegate{await UserAction(()=>engine.RefreshLocation());});menu.Items.Add("打开模拟器窗口",null,async delegate{await UserAction(()=>engine.OpenEmulator());});menu.Items.Add("关闭模拟器",null,async delegate{await UserAction(()=>engine.CloseEmulator());});menu.Items.Add("重启安卓应用",null,async delegate{await UserAction(()=>engine.RestartClient());});menu.Items.Add("导出诊断",null,delegate{ExportDiagnostics();});menu.Items.Add("检查更新",null,delegate{CheckUpdate();});menu.Items.Add("退出助手",null,delegate{quit=true;Close();});menu.Items.Add("退出并关闭智汇福大",null,async delegate{await engine.Interrupt();await AndroidClient.CloseApp(config);quit=true;Close();});
   tray=new NotifyIcon{Text="晚点名助手",Icon=this.Icon,Visible=true,ContextMenuStrip=menu};tray.DoubleClick+=delegate{Show();Activate();};
@@ -132,6 +136,12 @@ class MainForm:Form {
  }
  protected override void SetVisibleCore(bool value){if(value&&hideInitial){hideInitial=false;if(!IsHandleCreated)CreateHandle();BeginInvoke(new Action(StartService));return;}base.SetVisibleCore(value);}
  async void StartService(){if(!initial)return;initial=false;timer.Start();lastTick=Store.Now();await engine.ObserveManualWindow();if(updating||userOperating)return;if(config.ClosePending&&!config.ManualEmulator){await engine.FinishCompletedSignIn();return;}if(config.ManualEmulator){engine.State("手动操作模式已恢复，关闭模拟器后恢复定时签到。");return;}if(Rules.Due(config,Store.Now(),true))await engine.Check(false,true,false);else engine.State(config.Enabled?"助手已在后台等待，每天 "+config.Time+" 启动或连接模拟器并签到。":"自动签到已暂停。");}
+ void SetAutoCloseEmulator(bool enabled){
+  bool previous=config.AutoCloseEmulator,pending=config.ClosePending;
+  config.AutoCloseEmulator=enabled;if(!enabled)config.ClosePending=false;
+  try{Store.Save(config);}catch{config.AutoCloseEmulator=previous;config.ClosePending=pending;ui.Refresh(config);ui.Feedback("保存未完成，请检查当前账户的写入权限。",true);return;}
+  ui.Refresh(config);ui.Feedback(enabled?"已保存：签到成功后自动关闭模拟器。":"已保存：签到完成后保留模拟器运行。",false);
+ }
  async void SaveSchedule(){++userAction;await engine.Interrupt();string chosen=ui.Time;if(!Rules.ValidTime(chosen)){ui.Feedback("请选择 21:00–23:59 内的时间。",true);return;}try{Startup.Set(ui.StartupEnabled);config.Time=chosen;config.Enabled=ui.Enabled;config.EmulatorResumeAt="";Store.Save(config);ui.Refresh(config);ui.Feedback("已保存：每天 "+chosen+"，"+(config.Enabled?"自动签到已开启。":"自动签到已暂停。"),false);if(Rules.Due(config,Store.Now(),false)){engine.ResetRetry();await engine.Check(false,false,false);}}catch{ui.Feedback("保存未完成，请检查当前账户的写入权限。",true);}}
  async void SaveEnvironment(){++userAction;await engine.Interrupt();if(config.ClosePending){config.ClosePending=false;Store.Save(config);}if(config.ManualEmulator){ui.Feedback("请先关闭模拟器，再修改运行环境。",true);return;}if(engine.IsBusy){ui.Feedback("正在检查签到状态，请等待完成后再保存运行环境。",true);return;}try{int index;if(!AndroidClient.ValidConsole(ui.EmulatorPath)||!Int32.TryParse(ui.EmulatorIndex,out index)||index<0||index>99){ui.Feedback("请选择雷电或 MuMu 控制程序，实例编号为 0–99。",true);return;}var candidate=new Config{EmulatorPath=Path.GetFullPath(ui.EmulatorPath),EmulatorIndex=index,FixedPosition=ui.FixedPosition};AndroidClient.SavedPosition(candidate);config.EmulatorPath=candidate.EmulatorPath;config.EmulatorIndex=index;config.FixedPosition=candidate.FixedPosition;Store.Save(config);ui.Refresh(config);ui.Feedback("运行环境已保存，可到概览检查连接。",false);}catch(InvalidOperationException e){ui.Feedback(e.Message,true);}catch{ui.Feedback("保存未完成，请检查程序路径和实例编号。",true);}}
  async void ShowHiddenPage(){await UserAction(()=>engine.RevealButton());if(preview==null||preview.IsDisposed)preview=new HiddenPagePreview(engine.PreviewSwipe);if(!preview.Visible)preview.Show(this);preview.WindowState=FormWindowState.Normal;preview.Activate();}
