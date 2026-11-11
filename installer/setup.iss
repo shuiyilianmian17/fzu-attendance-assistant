@@ -1,5 +1,5 @@
-#ifndef AppVersion
-  #define AppVersion "1.0.17"
+﻿#ifndef AppVersion
+  #define AppVersion "1.0.18"
 #endif
 #ifndef PayloadDir
   #define PayloadDir "..\dist\portable"
