@@ -1,5 +1,5 @@
 ﻿#ifndef AppVersion
-  #define AppVersion "1.0.18"
+  #define AppVersion "1.0.19"
 #endif
 #ifndef PayloadDir
   #define PayloadDir "..\dist\portable"
@@ -62,6 +62,8 @@ UninstallAppRunningError=请先从托盘退出晚点名助手，然后重试卸�
 Name: desktopicon; Description: "创建桌面快捷方式"; Flags: checkedonce
 Name: startup; Description: "登录 Windows 后自动运行助手"; Flags: checkedonce
 [Files]
+Source: "{#PayloadDir}\api\*"; DestDir: "{app}\api"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDir}\runtime\*"; DestDir: "{app}\runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PayloadDir}\晚点名助手.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PayloadDir}\assets\app.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "{#PayloadDir}\assets\app.png"; DestDir: "{app}\assets"; Flags: ignoreversion

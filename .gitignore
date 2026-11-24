@@ -1,4 +1,4 @@
-/dist/
+﻿/dist/
 /bin/
 /obj/
 /.vs/
@@ -28,3 +28,6 @@ last-success.png
 
 *诊断*.txt
 *diagnostic*.json
+
+runtime/
+api-data/

@@ -27,7 +27,8 @@ $fzuStage = Join-Path $PSScriptRoot 'dist\zip-content'
 New-Item -ItemType Directory -Path (Join-Path $fzuStage 'assets') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $fzuPortable '晚点名助手.exe'),(Join-Path $fzuPortable '使用说明.md') -Destination $fzuStage -Force
 foreach ($fzuAsset in @('app.ico','app.png','app.svg')) { Copy-Item -LiteralPath (Join-Path $fzuPortable ('assets\'+$fzuAsset)) -Destination (Join-Path $fzuStage 'assets') -Force }
-$fzuZipEntries = @((Join-Path $fzuStage '晚点名助手.exe'),(Join-Path $fzuStage '使用说明.md'),(Join-Path $fzuStage 'assets'))
+Copy-Item -LiteralPath (Join-Path $fzuPortable 'api'),(Join-Path $fzuPortable 'runtime') -Destination $fzuStage -Recurse -Force
+$fzuZipEntries = @((Join-Path $fzuStage '晚点名助手.exe'),(Join-Path $fzuStage '使用说明.md'),(Join-Path $fzuStage 'assets'),(Join-Path $fzuStage 'api'),(Join-Path $fzuStage 'runtime'))
 Compress-Archive -LiteralPath $fzuZipEntries -DestinationPath $fzuZip -Force
 $fzuSetup = Join-Path $fzuRelease "FzuAttendanceAssistant-Setup-$fzuVersion.exe"
 $fzuChecksums = @($fzuSetup,$fzuZip) | ForEach-Object { $fzuHash=Get-FileHash -LiteralPath $_ -Algorithm SHA256; $fzuHash.Hash.ToLowerInvariant()+'  '+[IO.Path]::GetFileName($_) }

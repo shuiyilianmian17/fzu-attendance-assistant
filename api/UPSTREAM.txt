@@ -1,0 +1,3 @@
+接口实现基于 https://github.com/BOY-Chinese/fzu-evening-rollcall ，感谢原作者。
+本目录保留原协议实现，index.js 增加模块导出和助手短信输入适配，bridge.js 负责与助手通信。
+运行环境目录 runtime 内含 Node.js，其许可证随运行程序一同提供。
