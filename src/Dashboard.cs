@@ -75,7 +75,16 @@ sealed class Dashboard {
   bool api=config.Backend=="api";
   foreach(string name in new[]{"ShowHiddenPage","RestartClient","RefreshLocation","OpenEmulator","CloseEmulator"})Find<Button>(name).IsEnabled=!api;
   Find<TextBlock>("ApiAccountState").Text=String.IsNullOrEmpty(config.ApiSecret)?"请填写账号与密码":"密码已加密保存，点击眼睛可查看";
-Find<CheckBox>("AutoCloseEmulator").IsChecked=config.AutoCloseEmulator;var now=Store.Now();bool done=config.SuccessDate==now.ToString("yyyy-MM-dd");Find<TextBlock>("RunBadge").Text=config.ManualEmulator?"手动操作中":config.Enabled?"自动签到已开启":"自动签到已暂停";Find<TextBlock>("PlanValue").Text=config.Time;Find<TextBlock>("TodayValue").Text=done?"已签到":"待签到";Find<TextBlock>("StateText").Text=config.LastState;Find<TextBlock>("DateText").Text=now.ToString("MM月dd日 dddd",System.Globalization.CultureInfo.GetCultureInfo("zh-CN"));string next="下次计划：";TimeSpan planned;TimeSpan.TryParse(config.Time,out planned);next+=config.ManualEmulator?"手动操作中，关闭模拟器后恢复定时":!config.Enabled?"自动签到已暂停":done?"明天 "+config.Time:now.TimeOfDay<=planned?"今天 "+config.Time:Rules.InWindow(now)?"当前在签到时段，将检查并尝试补签":"明天 "+config.Time;Find<TextBlock>("NextRun").Text=next;PathStatus();}
+Find<CheckBox>("AutoCloseEmulator").IsChecked=config.AutoCloseEmulator;var now=Store.Now();bool done=config.SuccessDate==now.ToString("yyyy-MM-dd");
+var greenBackground=new SolidColorBrush(Color.FromRgb(230,245,237));
+var greenText=new SolidColorBrush(Color.FromRgb(28,111,70));
+bool enabled=config.Enabled&&!config.ManualEmulator;
+Find<Border>("RunBadgeCard").Background=enabled?greenBackground:new SolidColorBrush(Color.FromRgb(228,237,249));
+Find<TextBlock>("RunBadge").Foreground=enabled?greenText:new SolidColorBrush(Color.FromRgb(24,52,82));
+Find<Border>("TodayCard").Background=done?greenBackground:Brushes.White;
+Find<Border>("TodayCard").BorderBrush=done?new SolidColorBrush(Color.FromRgb(170,217,190)):new SolidColorBrush(Color.FromRgb(225,232,241));
+Find<TextBlock>("TodayValue").Foreground=done?greenText:new SolidColorBrush(Color.FromRgb(24,52,82));
+foreach(string label in new[]{"TodayLabel","TodayHint"})Find<TextBlock>(label).Foreground=done?greenText:new SolidColorBrush(Color.FromRgb(120,137,159));Find<TextBlock>("RunBadge").Text=config.ManualEmulator?"手动操作中":config.Enabled?"自动签到已开启":"自动签到已暂停";Find<TextBlock>("PlanValue").Text=config.Time;Find<TextBlock>("TodayValue").Text=done?"已签到":"待签到";Find<TextBlock>("StateText").Text=config.LastState;Find<TextBlock>("DateText").Text=now.ToString("MM月dd日 dddd",System.Globalization.CultureInfo.GetCultureInfo("zh-CN"));string next="下次计划：";TimeSpan planned;TimeSpan.TryParse(config.Time,out planned);next+=config.ManualEmulator?"手动操作中，关闭模拟器后恢复定时":!config.Enabled?"自动签到已暂停":done?"明天 "+config.Time:now.TimeOfDay<=planned?"今天 "+config.Time:Rules.InWindow(now)?"当前在签到时段，将检查并尝试补签":"明天 "+config.Time;Find<TextBlock>("NextRun").Text=next;PathStatus();}
  public void LoadLogs(){try{string[] lines=File.Exists(Store.FilePath("运行日志.txt"))?File.ReadAllLines(Store.FilePath("运行日志.txt")):new string[0];Find<TextBox>("LogsText").Text=lines.Length==0?"暂无运行记录":String.Join(Environment.NewLine,lines.Reverse().Take(500).Reverse());Find<TextBox>("LogsText").ScrollToEnd();Find<TextBlock>("RecentLogs").Text=lines.Length==0?"暂无运行记录":String.Join(Environment.NewLine,lines.Reverse().Take(2).Reverse());}catch{Find<TextBlock>("RecentLogs").Text="记录暂时无法读取，请稍后刷新。";}}
  public static void CheckInteractions(Config config){
   var view=new Dashboard(config);Action<bool,string> require=delegate(bool ok,string message){if(!ok)throw new InvalidOperationException(message);};
@@ -90,6 +99,11 @@ Find<CheckBox>("AutoCloseEmulator").IsChecked=config.AutoCloseEmulator;var now=S
    view.SetPasswordVisible(false);
   }
   view.ClearApiPassword();
+  view.Refresh(new Config{Enabled=true,SuccessDate=Store.Now().ToString("yyyy-MM-dd")});
+  require(((SolidColorBrush)view.Find<Border>("RunBadgeCard").Background).Color==Color.FromRgb(230,245,237),"开启时应显示绿色");
+  require(((SolidColorBrush)view.Find<Border>("TodayCard").Background).Color==Color.FromRgb(230,245,237),"已签到卡片应整体绿色");
+  view.Refresh(new Config{Enabled=false,SuccessDate=Store.Now().AddDays(-1).ToString("yyyy-MM-dd")});
+  require(((SolidColorBrush)view.Find<Border>("TodayCard").Background).Color==Colors.White,"跨日应恢复待签到卡片");
   view.Find<RadioButton>("NavSchedule").IsChecked=true;require(view.Find<FrameworkElement>("SchedulePage").Visibility==Visibility.Visible,"导航没有切换");
   view.Find<ComboBox>("HourPicker").SelectedItem="23";view.Find<ComboBox>("MinutePicker").SelectedItem="59";string time=null;view.SaveSchedule=delegate{time=view.Time;};view.Find<Button>("SaveSchedule").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));require(time=="23:59","保存时间异常");
   view.Find<RadioButton>("NavEnvironment").IsChecked=true;require(view.Find<FrameworkElement>("EnvironmentPage").Visibility==Visibility.Visible,"环境导航异常");require(view.Root.FindName("WindowsOptions")==null&&view.Root.FindName("BackendPicker")==null,"仍残留旧客户端界面");

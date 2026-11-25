@@ -31,6 +31,8 @@ static class Store {
  public static string SafeError(Exception e){return e is TimeoutException?"模拟器响应超时，请导出诊断查看连接状态。":"操作未完成（"+e.GetType().Name+"），请导出诊断。";}
 }
 public class Config {
+ public int WindowWidth,WindowHeight;
+ public bool WindowMaximized;
  public string Time="21:05";
  public bool Enabled=false;
  public string Backend="emulator";
@@ -118,7 +120,7 @@ class Engine {
   busy=true;active=Operation.Start();
   try{
    bool confirmed=await ApiBackend.Check(Config,dry,force,State);
-   if(confirmed){Config.SuccessDate=Store.Now().ToString("yyyy-MM-dd");State("接口签到成功，已从服务器复核今日签到结果。");}
+   if(confirmed){Config.SuccessDate=Store.Now().ToString("yyyy-MM-dd");State("接口签到完成，原项目接口流程返回成功。");}
   }catch(OperationCanceledException){}
   catch(Exception e){State(e is InvalidOperationException?e.Message:"接口连接失败，请稍后重试或检查账号设置。");}
   finally{busy=false;active=null;retry=Store.Now().AddMinutes(5);}
@@ -136,6 +138,11 @@ class MainForm:Form {
   Store.MaintainLog();hideInitial=hidden;config=Store.Read();if(!Rules.ValidTime(config.Time))config.Time="21:05";if(!AndroidClient.ValidConsole(config.EmulatorPath)){string found=AndroidClient.Detect(config.EmulatorPath);if(found!=null){config.EmulatorPath=found;Store.Save(config);}}
   Text="晚点名助手 · v"+typeof(MainForm).Assembly.GetName().Version.ToString(3);Icon=System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath)??SystemIcons.Application;
   ClientSize=new Size(1060,720);MinimumSize=new Size(950,680);StartPosition=FormStartPosition.CenterScreen;BackColor=Color.FromArgb(242,245,250);
+  if(config.WindowWidth>0&&config.WindowHeight>0){
+   var area=Screen.FromPoint(Cursor.Position).WorkingArea;
+   Size=new Size(Math.Max(MinimumSize.Width,Math.Min(config.WindowWidth,area.Width)),Math.Max(MinimumSize.Height,Math.Min(config.WindowHeight,area.Height)));
+  }
+  if(config.WindowMaximized)WindowState=FormWindowState.Maximized;
   ui=new Dashboard(config);var host=new System.Windows.Forms.Integration.ElementHost{Dock=DockStyle.Fill,Child=ui.Root};Controls.Add(host);
   engine=new Engine(config,delegate(string state){ui.Refresh(config);ui.LoadLogs();tray.Text=("晚点名助手 · "+state).Substring(0,Math.Min(63,("晚点名助手 · "+state).Length));});
   ui.SavePosition=SavePosition;ui.SaveBackend=SaveBackend;
@@ -143,10 +150,27 @@ class MainForm:Form {
   ui.SaveSchedule=SaveSchedule;ui.SaveEnvironment=SaveEnvironment;ui.CheckConnection=async delegate{await UserAction(()=>engine.Check(true,false,true));};ui.AttemptNow=async delegate{await UserAction(()=>engine.Check(false,true,true));};ui.LoginHelp=LoginHelp;ui.ShowHiddenPage=ShowHiddenPage;ui.RestartClient=async delegate{await UserAction(()=>engine.RestartClient());};ui.RefreshLocation=async delegate{await UserAction(()=>engine.RefreshLocation());};ui.ExportDiagnostics=ExportDiagnostics;ui.CheckUpdate=CheckUpdate;ui.OpenEmulator=async delegate{await UserAction(()=>engine.OpenEmulator());};ui.CloseEmulator=async delegate{await UserAction(()=>engine.CloseEmulator());};
   var menu=new ContextMenuStrip();menu.Items.Add("打开设置",null,delegate{Show();WindowState=FormWindowState.Normal;Activate();});menu.Items.Add("检查连接",null,async delegate{await UserAction(()=>engine.Check(true,false,true));});menu.Items.Add("显示隐藏页",null,delegate{ShowHiddenPage();});menu.Items.Add("重新定位",null,async delegate{await UserAction(()=>engine.RefreshLocation());});menu.Items.Add("打开模拟器窗口",null,async delegate{await UserAction(()=>engine.OpenEmulator());});menu.Items.Add("关闭模拟器",null,async delegate{await UserAction(()=>engine.CloseEmulator());});menu.Items.Add("重启安卓应用",null,async delegate{await UserAction(()=>engine.RestartClient());});menu.Items.Add("导出诊断",null,delegate{ExportDiagnostics();});menu.Items.Add("检查更新",null,delegate{CheckUpdate();});menu.Items.Add("退出助手",null,delegate{quit=true;Close();});menu.Items.Add("退出并关闭智汇福大",null,async delegate{await engine.Interrupt();await AndroidClient.CloseApp(config);quit=true;Close();});
   tray=new NotifyIcon{Text="晚点名助手",Icon=this.Icon,Visible=true,ContextMenuStrip=menu};tray.DoubleClick+=delegate{Show();Activate();};
-  FormClosing+=delegate(object sender,FormClosingEventArgs e){if(!quit&&e.CloseReason==CloseReason.UserClosing){e.Cancel=true;Hide();}else{tray.Visible=false;timer.Stop();showRequests.Stop();}};
+  FormClosing+=delegate(object sender,FormClosingEventArgs e){SaveWindowGeometry();if(!quit&&e.CloseReason==CloseReason.UserClosing){e.Cancel=true;Hide();}else{tray.Visible=false;timer.Stop();showRequests.Stop();}};
   showRequests=new System.Windows.Forms.Timer{Interval=500};showRequests.Tick+=delegate{if(Program.ShowRequest.WaitOne(0)){Show();WindowState=FormWindowState.Normal;Activate();}};showRequests.Start();
-  timer=new System.Windows.Forms.Timer{Interval=1000};timer.Tick+=async delegate{if(Store.MaintainLog())ui.LoadLogs();if(updating||userOperating)return;DateTime now=Store.Now();bool wake=lastTick!=DateTime.MinValue&&(now-lastTick).TotalSeconds>90;lastTick=now;ui.Refresh(config);await engine.ObserveManualWindow();if(updating||userOperating)return;await engine.Check(false,wake,false);};
+  timer=new System.Windows.Forms.Timer{Interval=1000};timer.Tick+=async delegate{SaveWindowGeometry();if(Store.MaintainLog())ui.LoadLogs();if(updating||userOperating)return;DateTime now=Store.Now();bool wake=lastTick!=DateTime.MinValue&&(now-lastTick).TotalSeconds>90;lastTick=now;ui.Refresh(config);await engine.ObserveManualWindow();if(updating||userOperating)return;await engine.Check(false,wake,false);};
   Shown+=delegate{StartService();};
+ }
+ internal static void WindowGeometryTests(){
+  var clean=new Config();Store.Save(clean);
+  using(var first=new MainForm(false)){first.Size=new Size(1100,740);first.SaveWindowGeometry();}
+  var saved=Store.Read();if(saved.WindowWidth!=1100||saved.WindowHeight!=740)throw new Exception("窗口大小未保存");
+  using(var restored=new MainForm(false)){if(restored.Size!=new Size(1100,740))throw new Exception("窗口大小未恢复");}
+  if(!String.IsNullOrEmpty(Store.Json.Deserialize<Config>("{}").ApiSecret))throw new Exception("旧配置默认值异常");
+  File.WriteAllText(Store.FilePath("窗口大小检查.txt"),"通过：保存并重新加载窗口大小、兼容旧配置。");
+ }
+ void SaveWindowGeometry(){
+  if(WindowState==FormWindowState.Minimized)return;
+  bool maximized=WindowState==FormWindowState.Maximized;
+  Size bounds=maximized?RestoreBounds.Size:Size;
+  if(bounds.Width<MinimumSize.Width||bounds.Height<MinimumSize.Height)return;
+  if(config.WindowWidth==bounds.Width&&config.WindowHeight==bounds.Height&&config.WindowMaximized==maximized)return;
+  config.WindowWidth=bounds.Width;config.WindowHeight=bounds.Height;config.WindowMaximized=maximized;
+  try{Store.Save(config);}catch{}
  }
  protected override void SetVisibleCore(bool value){if(value&&hideInitial){hideInitial=false;if(!IsHandleCreated)CreateHandle();BeginInvoke(new Action(StartService));return;}base.SetVisibleCore(value);}
  async void StartService(){if(!initial)return;initial=false;timer.Start();lastTick=Store.Now();await engine.ObserveManualWindow();if(updating||userOperating)return;if(config.ClosePending&&!config.ManualEmulator){await engine.FinishCompletedSignIn();return;}if(config.ManualEmulator){engine.State("手动操作模式已恢复，关闭模拟器后恢复定时签到。");return;}if(Rules.Due(config,Store.Now(),true))await engine.Check(false,true,false);else engine.State(config.Enabled?"助手已在后台等待，每天 "+config.Time+" 启动或连接模拟器并签到。":"自动签到已暂停。");}
@@ -213,6 +237,7 @@ static class Program {
   if(args.Contains("--discovery-probe")){File.WriteAllText(Store.FilePath("模拟器查找检查.txt"),AndroidClient.Detect("")??"未找到");return 0;}
   if(args.Contains("--capture-hidden")){File.WriteAllBytes(Store.FilePath("hidden-preview.png"),HiddenPagePreview.CaptureFrame().GetAwaiter().GetResult());return 0;}
   if(args.Contains("--render-ui")){Dashboard.Render(Path.Combine(Store.Dir,"ui-preview"),Store.Read());return 0;}
+  if(args.Contains("--window-test")){MainForm.WindowGeometryTests();return 0;}
   if(args.Contains("--ui-test")){Dashboard.CheckInteractions(Store.Read());return 0;}
   if(args.Contains("--self-test")){Test();return 0;}
   if(args.Contains("--android-page-test")){AndroidTests.Run();return 0;}
